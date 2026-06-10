@@ -427,7 +427,13 @@ const MultiplayerGame = ({ username }) => {
           isWinner,
           message: isWinner ? 'You Won!' : 'You Lost!',
           rating: result.ratings?.[socket.id],
-          finalScore: result.finalScore || result.stats?.score
+          finalScore: result.finalScore || result.stats?.score,
+          roomCode: result.roomCode,
+          isStaked: result.isStaked,
+          winnerSignature: result.winnerSignature,
+          winnerAddress: result.winnerAddress,
+          stakeAmount: result.stakeAmount,
+          stakeCurrency: result.stakeCurrency,
         }
       });
     });

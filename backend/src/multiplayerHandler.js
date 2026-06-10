@@ -348,8 +348,14 @@ class MultiplayerHandler {
     }
 
     const gameOverData = {
+      roomCode,
       winner: winner.socketId,
       winnerName: winner.name,
+      isStaked: gameRecord?.isStaked || false,
+      winnerSignature: gameRecord?.winnerSignature || null,
+      winnerAddress: gameRecord?.winnerAddress || null,
+      stakeCurrency: gameRecord?.stakeCurrency || 'CELO',
+      stakeAmount: gameRecord?.stakeAmount || null,
       ratings: ratingResult ? {
         [winner.socketId]: ratingResult.winner.newRating,
         [loser.socketId]: ratingResult.loser.newRating

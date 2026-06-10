@@ -1,7 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useAccount } from 'wagmi';
 import io from 'socket.io-client';
 import { STORAGE_KEY, BACKEND_URL, REMATCH_ROUTE } from '../constants';
+import { useClaimPrize } from '../hooks/useContract';
+import { BLOCK_EXPLORER_URL } from '../contracts/PongEscrow';
 import '../styles/GameOver.css';
 
 const REMATCH_REQUEST_EVENT = 'requestRematch';
@@ -24,6 +27,24 @@ const GameOver = () => {
   const [rematchRequested, setRematchRequested] = useState(false);
   const [waitingForResponse, setWaitingForResponse] = useState(false);
   const [rematchResponded, setRematchResponded] = useState(false);
+
+  // Claim prize hooks
+  const { address, isConnected } = useAccount();
+  const {
+    claimPrize,
+    hash: claimTxHash,
+    isPending: isClaimPending,
+    isConfirming: isClaimConfirming,
+    isSuccess: isClaimSuccess,
+    error: claimError
+  } = useClaimPrize();
+  const [claiming, setClaiming] = useState(false);
+  const [claimed, setClaimed] = useState(false);
+  const [claimErrorMessage, setClaimErrorMessage] = useState(null);
+
+  const isStaked = result?.isStaked || false;
+  const isWinner = result?.isWinner || false;
+  const canClaim = isStaked && isWinner && result?.winnerSignature && !claimed;
 
   useEffect(() => {
     if (!result) {
@@ -79,6 +100,52 @@ const GameOver = () => {
     };
   }, [result, navigate]);
 
+  const handleClaimPrize = useCallback(async () => {
+    if (!result?.roomCode || !result?.winnerSignature) return;
+    setClaiming(true);
+    setClaimErrorMessage(null);
+    try {
+      await claimPrize(result.roomCode, result.winnerSignature);
+    } catch (error) {
+      console.error('Claim error:', error);
+      setClaimErrorMessage(error.message || 'Claim failed');
+      setClaiming(false);
+    }
+  }, [result, claimPrize]);
+
+  // Handle claim success
+  useEffect(() => {
+    if (isClaimSuccess && claiming) {
+      setClaimed(true);
+      setClaiming(false);
+      if (result?.roomCode) {
+        fetch(`${BACKEND_URL}/games`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            roomCode: result.roomCode,
+            status: 'finished',
+            claimed: true,
+            claimTxHash: claimTxHash
+          })
+        }).catch(() => {});
+      }
+    }
+  }, [isClaimSuccess, claiming, claimTxHash, result, BACKEND_URL]);
+
+  // Handle claim error
+  useEffect(() => {
+    if (claimError && claiming) {
+      const msg = claimError.message || String(claimError);
+      if (msg.includes('User rejected') || msg.includes('user rejected')) {
+        setClaimErrorMessage('Transaction cancelled');
+      } else {
+        setClaimErrorMessage('Claim failed. Please try again.');
+      }
+      setClaiming(false);
+    }
+  }, [claimError, claiming]);
+
   if (!result) {
     return null;
   }
@@ -126,7 +193,54 @@ const GameOver = () => {
         <p>New Rating: {rating}</p>
         <p>Game Duration: {Math.round((stats.duration || 0) / 1000)}s</p>
         <p>Total Hits: {stats.hits || 0}</p>
+        {isStaked && (
+          <p style={{ color: '#fdd040', marginTop: '10px' }}>
+            {result?.stakeAmount} {result?.stakeCurrency || 'CELO'} staked
+          </p>
+        )}
       </div>
+
+      {/* Claim Prize Section — only for staked winners */}
+      {canClaim && (
+        <div className="claim-section" style={{ margin: '20px 0', padding: '20px', background: 'rgba(123,63,228,0.15)', borderRadius: '12px', border: '1px solid #7b3fe4' }}>
+          <h3 style={{ color: '#fdd040', marginBottom: '10px' }}>Prize: {result?.stakeAmount ? (parseFloat(result.stakeAmount) * 2).toString() : '0'} {result?.stakeCurrency || 'CELO'}</h3>
+          {claimErrorMessage && (
+            <div style={{ background: 'rgba(255,107,107,0.1)', border: '1px solid #ff6b6b', borderRadius: 8, padding: 10, marginBottom: 12, color: '#ff6b6b', fontSize: '0.85rem' }}>
+              {claimErrorMessage}
+            </div>
+          )}
+          {claimed ? (
+            <div style={{ color: '#45CD85', fontSize: '0.9rem' }}>
+              Prize claimed!
+              {claimTxHash && (
+                <a href={`${BLOCK_EXPLORER_URL}/tx/${claimTxHash}`} target="_blank" rel="noopener noreferrer"
+                  style={{ color: '#7b3fe4', marginLeft: 8, fontSize: '0.8rem' }}>
+                  View tx
+                </a>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={handleClaimPrize}
+              disabled={claiming}
+              style={{
+                padding: '14px 32px', background: '#7b3fe4', color: '#fff',
+                border: 'none', borderRadius: 8, cursor: claiming ? 'wait' : 'pointer',
+                fontFamily: '"Press Start 2P", monospace', fontSize: '0.85rem'
+              }}
+            >
+              {claiming ? (isClaimPending ? 'Confirm in Wallet...' : 'Confirming...') : 'Claim Prize'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Show stake info for staked losers */}
+      {isStaked && !isWinner && (
+        <div style={{ margin: '15px 0', padding: '15px', background: 'rgba(255,107,107,0.1)', borderRadius: 8, color: '#ff6b6b', fontSize: '0.85rem' }}>
+          {result?.stakeAmount} {result?.stakeCurrency || 'CELO'} lost — better luck next time!
+        </div>
+      )}
 
       {rematchRequested && (
         <div className="rematch-request">
