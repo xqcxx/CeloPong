@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAccount } from 'wagmi';
 import { useClaimPrize } from '../hooks/useContract';
+import { BLOCK_EXPLORER_URL } from '../contracts/PongEscrow';
 import { BACKEND_URL, PRIZE_MULTIPLIER } from '../constants';
 import { computePrizeFromStake, formatWeiToEth, sumWei, mergePages, shouldResetPagination, createPaginationState } from '../utils';
 import '../styles/MyWins.css';
@@ -445,7 +446,7 @@ const MyWins = () => {
                         <span className="detail-label">Claim Tx:</span>
                         <span className="detail-value tx-hash">
                           <a
-                            href={`https://sepolia.celoscan.io/tx/${game.claimTxHash}`}
+                            href={`${BLOCK_EXPLORER_URL}/tx/${game.claimTxHash}`}
                             target="_blank"
                             rel="noopener noreferrer"
                           >

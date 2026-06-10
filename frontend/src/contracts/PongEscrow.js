@@ -1,5 +1,7 @@
-// PongEscrow Contract Configuration — Celo
-export const PONG_ESCROW_ADDRESS = '0x359556B3716e22d399811A3cb6469613b5b1b208';
+// PongEscrow Contract ABI + config — addresses come from env
+import { PONG_ESCROW_ADDRESS, BLOCK_EXPLORER_URL } from '../config/env';
+
+export { PONG_ESCROW_ADDRESS, BLOCK_EXPLORER_URL };
 
 export const PONG_ESCROW_ABI = [
   // Constants
@@ -197,9 +199,5 @@ export const MatchStatus = {
   REFUNDED: 4,
 };
 
-// Block explorers
-export const BLOCK_EXPLORER_URL = 'https://sepolia.celoscan.io';
-export const BLOCK_EXPLORER_URL_MAINNET = 'https://celoscan.io';
-
-// Preset stake amounts per currency — populated in currencies.js
+// Re-export currencies for convenience
 export { CURRENCIES } from '../config/currencies';
