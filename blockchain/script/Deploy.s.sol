@@ -6,23 +6,25 @@ import "../src/PongEscrow.sol";
 
 contract DeployScript is Script {
     function run() external {
-        // Read private key from environment
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address backendOracle = vm.envAddress("BACKEND_ORACLE_ADDRESS");
-        
-        console.log("Deploying PongEscrow...");
+
+        console.log("Deploying PongEscrow to Celo...");
         console.log("Deployer:", vm.addr(deployerPrivateKey));
         console.log("Backend Oracle:", backendOracle);
-        
+
         vm.startBroadcast(deployerPrivateKey);
-        
-        // Deploy the contract
+
         PongEscrow escrow = new PongEscrow(backendOracle);
-        
+
         vm.stopBroadcast();
-        
+
         console.log("PongEscrow deployed at:", address(escrow));
-        console.log("\nTo verify contract, run:");
-        console.log("forge verify-contract <ADDRESS> src/PongEscrow.sol:PongEscrow --rpc-url lisk_sepolia --verifier blockscout --verifier-url $LISK_VERIFIER_URL");
+        console.log("");
+        console.log("To verify on Celoscan:");
+        console.log("forge verify-contract", address(escrow), "src/PongEscrow.sol:PongEscrow \\");
+        console.log("  --verifier etherscan \\");
+        console.log("  --verifier-url https://api-sepolia.celoscan.io/api \\");
+        console.log("  --constructor-args $(cast abi-encode \"constructor(address)\"", backendOracle, ")");
     }
 }

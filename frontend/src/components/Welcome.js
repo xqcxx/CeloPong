@@ -2,11 +2,14 @@ import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppKit } from '@reown/appkit/react';
 import { useAccount } from 'wagmi';
+import { parseUnits } from 'viem';
 import '../styles/Welcome.css';
 import { BACKEND_URL, SHOW_BACKEND_URL_BANNER } from '../constants';
 import soundManager from '../utils/soundManager';
-import { useStakeAsPlayer1, useStakeAsPlayer2, useGetMatch } from '../hooks/useContract';
-import { STAKE_AMOUNTS } from '../contracts/PongEscrow';
+import { useStakeAsPlayer1, useApproveToken } from '../hooks/useContract';
+import { CURRENCIES, isNativeToken } from '../config/currencies';
+import { PONG_ESCROW_ADDRESS } from '../contracts/PongEscrow';
+import { isMiniPay } from '../utils/minipay';
 import { useLeaderboardSubscription, useBackendUrl } from '../hooks';
 
 const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
@@ -15,9 +18,12 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
   const [audioStarted, setAudioStarted] = useState(false);
   const [stakingInProgress, setStakingInProgress] = useState(false);
   const [selectedStakeAmount, setSelectedStakeAmount] = useState(null);
+  const [selectedCurrency, setSelectedCurrency] = useState(null);
   const [pendingRoomCode, setPendingRoomCode] = useState(null);
   const [stakingErrorMessage, setStakingErrorMessage] = useState(null);
-  const titleRef = useRef();
+  const [approvalStep, setApprovalStep] = useState(false);
+  const inMiniPay = isMiniPay();
+  const titleRef = useRef(); // eslint-disable-line no-unused-vars
   const navigate = useNavigate();
   const socketRef = useRef(null);
   const { leaderboard, isLoading: isLeaderboardLoading, socket } = useLeaderboardSubscription();
@@ -34,6 +40,12 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
     isSuccess: isStakingSuccess,
     error: stakingError
   } = useStakeAsPlayer1();
+
+  const {
+    approve: approveToken,
+    isPending: isApprovalPending,
+    isConfirming: isApprovalConfirming
+  } = useApproveToken();
 
   useEffect(() => {
     if (!socket) {
@@ -101,19 +113,10 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
 
   // Handle successful staking transaction
   useEffect(() => {
-    console.log('🔍 Staking useEffect triggered:', {
-      isStakingSuccess,
-      pendingRoomCode,
-      stakingTxHash,
-      selectedStakeAmount,
-      address,
-      savedUsername
-    });
+    if (isStakingSuccess && pendingRoomCode && stakingTxHash && !approvalStep) {
+      const currencyKey = selectedCurrency?.key || 'CELO';
+      const currencySymbol = selectedCurrency?.symbol || 'CELO';
 
-    if (isStakingSuccess && pendingRoomCode && stakingTxHash) {
-      console.log('✅ All conditions met! Staking successful! Creating game record...');
-
-      // Notify backend about the staked match
       fetch(`${BACKEND_URL}/games`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -122,18 +125,12 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
           player1: { name: savedUsername, rating: 800 },
           isStaked: true,
           stakeAmount: selectedStakeAmount,
+          stakeCurrency: currencyKey,
           player1Address: address,
           player1TxHash: stakingTxHash,
           status: 'waiting'
         })
-      })
-        .then(res => res.json())
-        .then(data => {
-          console.log('✅ Staked game created in database:', data);
-        })
-        .catch(err => {
-          console.error('❌ Failed to create game record:', err);
-        });
+      }).catch(err => console.error('Failed to create game record:', err));
 
       setStakingInProgress(false);
       setGameState(prev => ({
@@ -142,6 +139,7 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
         gameMode: 'create-staked',
         roomCode: pendingRoomCode,
         stakeAmount: selectedStakeAmount,
+        stakeCurrency: currencyKey,
         player1Address: address,
         player1TxHash: stakingTxHash
       }));
@@ -151,6 +149,8 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
           gameMode: 'create-staked',
           roomCode: pendingRoomCode,
           stakeAmount: selectedStakeAmount,
+          stakeCurrency: currencyKey,
+          currencySymbol,
           player1Address: address,
           player1TxHash: stakingTxHash
         }
@@ -158,8 +158,9 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
 
       setPendingRoomCode(null);
       setSelectedStakeAmount(null);
+      setSelectedCurrency(null);
     }
-  }, [isStakingSuccess, pendingRoomCode, stakingTxHash, selectedStakeAmount, savedUsername, address, navigate, setGameState]);
+  }, [isStakingSuccess, pendingRoomCode, stakingTxHash, selectedStakeAmount, selectedCurrency, approvalStep, savedUsername, address, navigate, setGameState]);
 
   // Helper function to parse error messages
   const getErrorMessage = (error) => {
@@ -287,182 +288,171 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
     });
   };
 
+  const doStake = async (stakeAmount, currency) => {
+    const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+    setStakingInProgress(true);
+    setSelectedStakeAmount(stakeAmount);
+    setSelectedCurrency(currency);
+    setPendingRoomCode(roomCode);
+    setStakingErrorMessage(null);
+    setApprovalStep(false);
+
+    // For ERC-20 tokens, we need to approve first
+    if (!isNativeToken(currency.tokenAddress)) {
+      setApprovalStep(true);
+      try {
+        const amountWei = parseUnits(stakeAmount, currency.decimals);
+        await approveToken(currency.tokenAddress, PONG_ESCROW_ADDRESS, amountWei);
+        // Approval succeeded — now stake
+        setApprovalStep(false);
+        await stakeAsPlayer1(roomCode, currency, stakeAmount);
+      } catch (error) {
+        console.error('Error during ERC-20 stake:', error);
+        setStakingInProgress(false);
+        setPendingRoomCode(null);
+        setSelectedStakeAmount(null);
+        setSelectedCurrency(null);
+      }
+      return;
+    }
+
+    // Native CELO — single transaction
+    try {
+      await stakeAsPlayer1(roomCode, currency, stakeAmount);
+    } catch (error) {
+      console.error('Error initiating stake:', error);
+      setStakingInProgress(false);
+      setPendingRoomCode(null);
+      setSelectedStakeAmount(null);
+      setSelectedCurrency(null);
+    }
+  };
+
+  const showStakeAmountModal = (currency) => {
+    const modal = document.createElement('dialog');
+    modal.className = 'stake-modal';
+    const presets = currency.presets.map(v =>
+      `<button type="button" class="stake-option" data-amount="${v}">${v} ${currency.symbol}</button>`
+    ).join('');
+
+    modal.innerHTML = `
+      <form method="dialog">
+        <h2>${currency.icon} Stake ${currency.symbol}</h2>
+        <p style="margin-bottom: 20px; color: #888;">Choose how much to stake</p>
+        <div class="stake-options">${presets}</div>
+        <div style="margin: 20px 0; padding: 15px; background: rgba(116,113,203,0.1); border-radius: 8px;">
+          <label style="display: block; margin-bottom: 10px; color: #888; font-size: 0.9rem;">
+            Or enter custom amount:
+          </label>
+          <input type="number" id="custom-stake-input" placeholder="0.1" step="0.001" min="0.001"
+            style="width: 100%; padding: 10px; background: #1a1a1a; border: 1px solid rgb(116,113,203); border-radius: 5px; color: #fff; font-size: 1rem;" />
+          <div id="custom-amount-error" style="display: none; margin-top: 8px; padding: 8px; background: rgba(255,107,107,0.1); border: 1px solid #ff6b6b; border-radius: 5px; color: #ff6b6b; font-size: 0.75rem;"></div>
+          <button type="button" id="use-custom-amount-btn" style="width: 100%; margin-top: 10px; padding: 10px; background: rgb(116,113,203); color: #000; border: none; border-radius: 5px; cursor: pointer; font-family: 'Press Start 2P', monospace; font-size: 0.8rem;">
+            Use Custom Amount
+          </button>
+        </div>
+        <div class="buttons" style="margin-top: 20px;">
+          <button type="button" id="cancel-stake-btn">Cancel</button>
+        </div>
+      </form>
+    `;
+
+    document.body.appendChild(modal);
+    modal.showModal();
+
+    modal.querySelector('#cancel-stake-btn').onclick = () => { modal.close(); modal.remove(); };
+
+    const customInput = modal.querySelector('#custom-stake-input');
+    const useCustomBtn = modal.querySelector('#use-custom-amount-btn');
+    const errorDiv = modal.querySelector('#custom-amount-error');
+
+    customInput.oninput = () => { customInput.style.borderColor = 'rgb(116,113,203)'; errorDiv.style.display = 'none'; };
+
+    const handleStake = (stakeAmount) => {
+      modal.remove();
+      doStake(stakeAmount, currency);
+    };
+
+    useCustomBtn.onclick = () => {
+      const amt = parseFloat(customInput.value);
+      if (!amt || isNaN(amt) || amt <= 0) {
+        customInput.style.borderColor = '#ff6b6b';
+        errorDiv.textContent = 'Enter a valid amount';
+        errorDiv.style.display = 'block';
+        return;
+      }
+      handleStake(amt.toString());
+    };
+
+    modal.querySelectorAll('.stake-option').forEach(btn => {
+      btn.onclick = () => handleStake(btn.getAttribute('data-amount'));
+    });
+  };
+
+  const showCurrencyPicker = () => {
+    const currencies = Object.values(CURRENCIES);
+    const modal = document.createElement('dialog');
+    modal.className = 'stake-modal';
+    modal.innerHTML = `
+      <form method="dialog">
+        <h2>Choose Staking Currency</h2>
+        <p style="margin-bottom: 20px; color: #888;">Your opponent must stake the same currency</p>
+        <div class="stake-options" style="display: flex; flex-direction: column; gap: 10px;">
+          ${currencies.map(c => `
+            <button type="button" class="stake-option currency-${c.key}" data-currency="${c.key}" style="display: flex; align-items: center; gap: 12px; padding: 16px; text-align: left;">
+              <span style="font-size: 1.8rem;">${c.icon}</span>
+              <div>
+                <div style="font-weight: bold; color: #fff;">${c.name}</div>
+                <div style="font-size: 0.75rem; color: #888;">${c.symbol}</div>
+              </div>
+            </button>
+          `).join('')}
+        </div>
+        <div class="buttons" style="margin-top: 20px;">
+          <button type="button" id="cancel-currency-btn">Cancel</button>
+        </div>
+      </form>
+    `;
+
+    document.body.appendChild(modal);
+    modal.showModal();
+
+    modal.querySelector('#cancel-currency-btn').onclick = () => { modal.close(); modal.remove(); };
+
+    modal.querySelectorAll('.stake-option').forEach(btn => {
+      btn.onclick = () => {
+        const key = btn.getAttribute('data-currency');
+        modal.remove();
+        showStakeAmountModal(CURRENCIES[key]);
+      };
+    });
+  };
+
   const handleCreateStakedMatch = () => {
     promptUsername((username) => {
-      // Check if wallet is connected
       if (!isConnected) {
         alert('Please connect your wallet to create a staked match');
         return;
       }
-
-      // Show stake amount selection modal
-      const modal = document.createElement('dialog');
-      modal.className = 'stake-modal';
-      modal.innerHTML = `
-        <form method="dialog">
-          <h2>Select Stake Amount</h2>
-          <p style="margin-bottom: 20px; color: #888;">Choose how much ETH you want to stake</p>
-          <div class="stake-options">
-            ${STAKE_AMOUNTS.map(({ value, label }) => `
-              <button type="button" class="stake-option" data-amount="${value}">
-                ${label}
-              </button>
-            `).join('')}
-          </div>
-          <div style="margin: 20px 0; padding: 15px; background: rgba(116,113,203,0.1); border-radius: 8px;">
-            <label style="display: block; margin-bottom: 10px; color: #888; font-size: 0.9rem;">
-              Or enter custom amount (min 0.001 ETH):
-            </label>
-            <input
-              type="number"
-              id="custom-stake-input"
-              placeholder="0.001"
-              step="0.001"
-              min="0.001"
-              style="
-                width: 100%;
-                padding: 10px;
-                background: #1a1a1a;
-                border: 1px solid rgb(116,113,203);
-                border-radius: 5px;
-                color: #fff;
-                font-size: 1rem;
-              "
-            />
-            <div id="custom-amount-error" style="
-              display: none;
-              margin-top: 8px;
-              padding: 8px;
-              background: rgba(255, 107, 107, 0.1);
-              border: 1px solid #ff6b6b;
-              border-radius: 5px;
-              color: #ff6b6b;
-              font-size: 0.75rem;
-            "></div>
-            <button
-              type="button"
-              id="use-custom-amount-btn"
-              style="
-                width: 100%;
-                margin-top: 10px;
-                padding: 10px;
-                background: rgb(116,113,203);
-                color: #000;
-                border: none;
-                border-radius: 5px;
-                cursor: pointer;
-                font-family: 'Press Start 2P', monospace;
-                font-size: 0.8rem;
-              "
-            >
-              Use Custom Amount
-            </button>
-          </div>
-          <div class="buttons" style="margin-top: 20px;">
-            <button type="button" id="cancel-stake-btn">Cancel</button>
-          </div>
-        </form>
-      `;
-
-      document.body.appendChild(modal);
-      modal.showModal();
-
-      // Handle cancel
-      modal.querySelector('#cancel-stake-btn').onclick = () => {
-        modal.close();
-        modal.remove();
-      };
-
-      // Handle custom amount input
-      const customInput = modal.querySelector('#custom-stake-input');
-      const useCustomBtn = modal.querySelector('#use-custom-amount-btn');
-      const errorDiv = modal.querySelector('#custom-amount-error');
-
-      // Clear error on input change
-      customInput.oninput = () => {
-        customInput.style.borderColor = 'rgb(116,113,203)';
-        errorDiv.style.display = 'none';
-      };
-
-      useCustomBtn.onclick = async () => {
-        const customAmount = parseFloat(customInput.value);
-
-        // Validate custom amount
-        if (!customAmount || isNaN(customAmount)) {
-          customInput.style.borderColor = '#ff6b6b';
-          errorDiv.textContent = 'Please enter a valid amount';
-          errorDiv.style.display = 'block';
-          return;
-        }
-
-        if (customAmount < 0.001) {
-          customInput.style.borderColor = '#ff6b6b';
-          errorDiv.textContent = 'Minimum stake amount is 0.001 ETH';
-          errorDiv.style.display = 'block';
-          return;
-        }
-
-        // Reset border color and hide error
-        customInput.style.borderColor = 'rgb(116,113,203)';
-        errorDiv.style.display = 'none';
-
-        const stakeAmount = customAmount.toString();
-        modal.remove();
-
-        // Generate room code
-        const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-        console.log(`Creating staked match with ${stakeAmount} ETH, room code: ${roomCode}`);
-
-        setStakingInProgress(true);
-        setSelectedStakeAmount(stakeAmount);
-        setPendingRoomCode(roomCode);
-        setStakingErrorMessage(null); // Clear any previous errors
-
-        try {
-          await stakeAsPlayer1(roomCode, stakeAmount);
-        } catch (error) {
-          console.error('Error initiating stake:', error);
-          setStakingInProgress(false);
-          setPendingRoomCode(null);
-          setSelectedStakeAmount(null);
-        }
-      };
-
-      // Handle stake amount selection (preset buttons)
-      modal.querySelectorAll('.stake-option').forEach(button => {
-        button.onclick = async () => {
-          const stakeAmount = button.getAttribute('data-amount');
-          modal.remove();
-
-          // Generate room code
-          const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-          console.log(`Creating staked match with ${stakeAmount} ETH, room code: ${roomCode}`);
-
-          setStakingInProgress(true);
-          setSelectedStakeAmount(stakeAmount);
-          setPendingRoomCode(roomCode);
-          setStakingErrorMessage(null); // Clear any previous errors
-
-          try {
-            await stakeAsPlayer1(roomCode, stakeAmount);
-          } catch (error) {
-            console.error('Error initiating stake:', error);
-            setStakingInProgress(false);
-            setPendingRoomCode(null);
-            setSelectedStakeAmount(null);
-          }
-        };
-      });
+      showCurrencyPicker();
     });
   };
 
   return (
     <div className="welcome">
-      {/* Wallet Connect Button */}
+      {/* Wallet Connect Button — hidden in MiniPay (implicit connection) */}
       <div className="wallet-connect-container">
-        <button onClick={() => open()} className="connect-wallet-btn">
-          {isConnected ? `${address?.slice(0, 6)}...${address?.slice(-4)}` : 'Connect Wallet'}
-        </button>
+        {!inMiniPay && (
+          <button onClick={() => open()} className="connect-wallet-btn">
+            {isConnected ? `${address?.slice(0, 6)}...${address?.slice(-4)}` : 'Connect Wallet'}
+          </button>
+        )}
+        {inMiniPay && isConnected && (
+          <span className="minipay-badge">
+            {address?.slice(0, 6)}...{address?.slice(-4)}
+          </span>
+        )}
         {savedUsername && (
           <button onClick={() => navigate('/game-history')} className="game-history-btn">
             📊 History
@@ -501,7 +491,7 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
           >
             <span className="button-icon">💎</span>
             <span className="button-text">
-              {isConnected ? 'Staked Match' : 'Connect Wallet First'}
+              {isConnected || inMiniPay ? 'Staked Match' : 'Connect Wallet First'}
             </span>
           </button>
         </div>
@@ -526,14 +516,10 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
                   </div>
                   <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
                     <button
-                      onClick={async () => {
-                        if (pendingRoomCode && selectedStakeAmount) {
+                      onClick={() => {
+                        if (pendingRoomCode && selectedStakeAmount && selectedCurrency) {
                           setStakingErrorMessage(null);
-                          try {
-                            await stakeAsPlayer1(pendingRoomCode, selectedStakeAmount);
-                          } catch (error) {
-                            console.error('Retry error:', error);
-                          }
+                          doStake(selectedStakeAmount, selectedCurrency);
                         }
                       }}
                       style={{
@@ -555,6 +541,8 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
                         setStakingErrorMessage(null);
                         setPendingRoomCode(null);
                         setSelectedStakeAmount(null);
+                        setSelectedCurrency(null);
+                        setApprovalStep(false);
                       }}
                       style={{
                         padding: '12px 24px',
@@ -574,14 +562,23 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
               ) : (
                 <>
                   <h3>
-                    {isStakingPending && 'Confirm Transaction in Wallet...'}
-                    {isStakingConfirming && 'Transaction Confirming...'}
+                    {approvalStep && isApprovalPending && 'Step 1/2: Approve Token in Wallet...'}
+                    {approvalStep && isApprovalConfirming && 'Step 1/2: Approval Confirming...'}
+                    {!approvalStep && isStakingPending && 'Step ' + (selectedCurrency && !isNativeToken(selectedCurrency.tokenAddress) ? '2/2' : '1/1') + ': Confirm Stake in Wallet...'}
+                    {!approvalStep && isStakingConfirming && 'Stake Confirming...'}
                   </h3>
                   <div className="transaction-spinner"></div>
                   <p>
-                    {isStakingPending && 'Please confirm the transaction in your wallet'}
-                    {isStakingConfirming && 'Waiting for blockchain confirmation'}
+                    {approvalStep && isApprovalPending && 'Approve the contract to use your ' + (selectedCurrency?.symbol || '')}
+                    {approvalStep && isApprovalConfirming && 'Waiting for approval confirmation...'}
+                    {!approvalStep && isStakingPending && 'Confirm the stake transaction in your wallet'}
+                    {!approvalStep && isStakingConfirming && 'Waiting for blockchain confirmation...'}
                   </p>
+                  {selectedCurrency && (
+                    <p style={{ fontSize: '0.8rem', color: '#888', marginTop: '10px' }}>
+                      Staking {selectedStakeAmount} {selectedCurrency.symbol} {selectedCurrency.icon}
+                    </p>
+                  )}
                 </>
               )}
             </div>

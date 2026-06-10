@@ -12,17 +12,12 @@ remappings = [
 
 # RPC endpoints
 [rpc_endpoints]
-sepolia = "${SEPOLIA_RPC_URL}"
-polygon = "${POLYGON_RPC_URL}"
-base = "${BASE_RPC_URL}"
-# Celo L2 (OP Stack)
-celo = "${CELO_MAINNET}"
 celo_sepolia = "${CELO_SEPOLIA}"
+celo_sepolia_alchemy = "https://celo-sepolia.g.alchemy.com/v2/oA3aWf4dW3KozyXiBJ5TiZHnXtykfedo"
+celo = "${CELO_MAINNET}"
+celo_forno = "https://forno.celo.org"
 
-# Etherscan/Blockscout configuration
+# Celoscan verification (etherscan-compatible API)
 [etherscan]
-# Celo L2 uses Blockscout
-celo = { key = "", url = "https://celo.blockscout.com/api" }
-celo_sepolia = { key = "", url = "https://celo-sepolia.blockscout.com/api" }
-
-# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+celo = { key = "${CELOSCAN_API_KEY}", url = "https://api.celoscan.io/api" }
+celo_sepolia = { key = "${CELOSCAN_API_KEY}", url = "https://api-sepolia.celoscan.io/api" }

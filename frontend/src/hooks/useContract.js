@@ -1,8 +1,10 @@
 import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { parseEther } from 'viem';
+import { parseEther, parseUnits, erc20Abi } from 'viem';
 import { PONG_ESCROW_ADDRESS, PONG_ESCROW_ABI } from '../contracts/PongEscrow';
+import { isNativeToken } from '../config/currencies';
 
-// Hook to check if room code is available
+// ============ View Hooks ============
+
 export function useIsRoomCodeAvailable(roomCode) {
   return useReadContract({
     address: PONG_ESCROW_ADDRESS,
@@ -13,7 +15,6 @@ export function useIsRoomCodeAvailable(roomCode) {
   });
 }
 
-// Hook to get match details
 export function useGetMatch(roomCode) {
   return useReadContract({
     address: PONG_ESCROW_ADDRESS,
@@ -24,7 +25,6 @@ export function useGetMatch(roomCode) {
   });
 }
 
-// Hook to get match status
 export function useGetMatchStatus(roomCode) {
   return useReadContract({
     address: PONG_ESCROW_ADDRESS,
@@ -35,132 +35,166 @@ export function useGetMatchStatus(roomCode) {
   });
 }
 
-// Hook to stake as player 1 (create match)
-export function useStakeAsPlayer1() {
-  const { data: hash, writeContract, isPending, error } = useWriteContract();
-  
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
-    hash,
-  });
+// ============ ERC-20 Allowance Hook ============
 
-  const stakeAsPlayer1 = async (roomCode, stakeAmount) => {
+export function useTokenAllowance(owner, spender, tokenAddress) {
+  return useReadContract({
+    address: tokenAddress,
+    abi: erc20Abi,
+    functionName: 'allowance',
+    args: [owner, spender],
+    enabled: !!owner && !!spender && !!tokenAddress,
+  });
+}
+
+// ============ ERC-20 Approve Hook ============
+
+export function useApproveToken() {
+  const { data: hash, writeContract, isPending, error } = useWriteContract();
+
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const approve = async (tokenAddress, spender, amountWei) => {
     try {
       await writeContract({
+        address: tokenAddress,
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [spender, amountWei],
+      });
+    } catch (err) {
+      console.error('Error approving token:', err);
+      throw err;
+    }
+  };
+
+  return { approve, hash, isPending, isConfirming, isSuccess, error };
+}
+
+// ============ Stake as Player 1 (Create Match) ============
+
+export function useStakeAsPlayer1() {
+  const { data: hash, writeContract, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const stakeAsPlayer1 = async (roomCode, currency, stakeAmount, feeCurrencyAddress) => {
+    try {
+      const amount = isNativeToken(currency.tokenAddress)
+        ? 0n
+        : parseUnits(stakeAmount, currency.decimals);
+
+      const txOpts = {
         address: PONG_ESCROW_ADDRESS,
         abi: PONG_ESCROW_ABI,
         functionName: 'stakeAsPlayer1',
-        args: [roomCode],
-        value: parseEther(stakeAmount),
-      });
+        args: [roomCode, currency.tokenAddress || '0x0000000000000000000000000000000000000000', amount],
+      };
+
+      if (isNativeToken(currency.tokenAddress)) {
+        txOpts.value = parseEther(stakeAmount);
+      }
+
+      if (feeCurrencyAddress) {
+        txOpts.feeCurrency = feeCurrencyAddress;
+      }
+
+      await writeContract(txOpts);
     } catch (err) {
       console.error('Error staking as player 1:', err);
       throw err;
     }
   };
 
-  return {
-    stakeAsPlayer1,
-    hash,
-    isPending,
-    isConfirming,
-    isSuccess,
-    error,
-  };
+  return { stakeAsPlayer1, hash, isPending, isConfirming, isSuccess, error };
 }
 
-// Hook to stake as player 2 (join match)
+// ============ Stake as Player 2 (Join Match) ============
+
 export function useStakeAsPlayer2() {
   const { data: hash, writeContract, isPending, error } = useWriteContract();
-  
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
-    hash,
-  });
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
-  const stakeAsPlayer2 = async (roomCode, stakeAmount) => {
+  const stakeAsPlayer2 = async (roomCode, currency, stakeAmount, feeCurrencyAddress) => {
     try {
-      await writeContract({
+      const amount = isNativeToken(currency.tokenAddress)
+        ? 0n
+        : parseUnits(stakeAmount, currency.decimals);
+
+      const txOpts = {
         address: PONG_ESCROW_ADDRESS,
         abi: PONG_ESCROW_ABI,
         functionName: 'stakeAsPlayer2',
-        args: [roomCode],
-        value: parseEther(stakeAmount),
-      });
+        args: [roomCode, amount],
+      };
+
+      if (isNativeToken(currency.tokenAddress)) {
+        txOpts.value = parseEther(stakeAmount);
+      }
+
+      if (feeCurrencyAddress) {
+        txOpts.feeCurrency = feeCurrencyAddress;
+      }
+
+      await writeContract(txOpts);
     } catch (err) {
       console.error('Error staking as player 2:', err);
       throw err;
     }
   };
 
-  return {
-    stakeAsPlayer2,
-    hash,
-    isPending,
-    isConfirming,
-    isSuccess,
-    error,
-  };
+  return { stakeAsPlayer2, hash, isPending, isConfirming, isSuccess, error };
 }
 
-// Hook to claim prize
+// ============ Claim Prize ============
+
 export function useClaimPrize() {
   const { data: hash, writeContract, isPending, error } = useWriteContract();
-  
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
-    hash,
-  });
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
-  const claimPrize = async (roomCode, signature) => {
+  const claimPrize = async (roomCode, signature, feeCurrencyAddress) => {
     try {
-      await writeContract({
+      const txOpts = {
         address: PONG_ESCROW_ADDRESS,
         abi: PONG_ESCROW_ABI,
         functionName: 'claimPrize',
         args: [roomCode, signature],
-      });
+      };
+      if (feeCurrencyAddress) {
+        txOpts.feeCurrency = feeCurrencyAddress;
+      }
+      await writeContract(txOpts);
     } catch (err) {
       console.error('Error claiming prize:', err);
       throw err;
     }
   };
 
-  return {
-    claimPrize,
-    hash,
-    isPending,
-    isConfirming,
-    isSuccess,
-    error,
-  };
+  return { claimPrize, hash, isPending, isConfirming, isSuccess, error };
 }
 
-// Hook to claim refund
+// ============ Claim Refund ============
+
 export function useClaimRefund() {
   const { data: hash, writeContract, isPending, error } = useWriteContract();
-  
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
-    hash,
-  });
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
-  const claimRefund = async (roomCode) => {
+  const claimRefund = async (roomCode, feeCurrencyAddress) => {
     try {
-      await writeContract({
+      const txOpts = {
         address: PONG_ESCROW_ADDRESS,
         abi: PONG_ESCROW_ABI,
         functionName: 'claimRefund',
         args: [roomCode],
-      });
+      };
+      if (feeCurrencyAddress) {
+        txOpts.feeCurrency = feeCurrencyAddress;
+      }
+      await writeContract(txOpts);
     } catch (err) {
       console.error('Error claiming refund:', err);
       throw err;
     }
   };
 
-  return {
-    claimRefund,
-    hash,
-    isPending,
-    isConfirming,
-    isSuccess,
-    error,
-  };
+  return { claimRefund, hash, isPending, isConfirming, isSuccess, error };
 }

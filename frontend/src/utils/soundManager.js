@@ -732,4 +732,5 @@ class SoundManager {
   }
 }
 
-export default new SoundManager(); 
+const soundManager = new SoundManager();
+export default soundManager;

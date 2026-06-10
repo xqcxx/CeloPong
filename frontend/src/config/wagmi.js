@@ -1,27 +1,25 @@
 import { createAppKit } from '@reown/appkit/react';
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi';
-import { liskSepolia } from '@reown/appkit/networks';
+import { celo, celoSepolia } from '@reown/appkit/networks';
 
 const projectId = process.env.REACT_APP_WALLETCONNECT_PROJECT_ID || 'YOUR_PROJECT_ID';
 
-// Project metadata for AppKit
 const metadata = {
   name: 'PONG-IT',
-  description: 'Multiplayer Pong with Crypto Staking',
+  description: 'Multiplayer Pong with Crypto Staking on Celo',
   url: 'https://pong-it.app',
   icons: ['https://pong-it.app/logo.png']
 };
 
-// Create Wagmi Adapter
 export const wagmiAdapter = new WagmiAdapter({
-  networks: [liskSepolia],
-  projectId
+  networks: [celoSepolia, celo],
+  projectId,
+  defaultNetwork: celoSepolia,
 });
 
-// Create AppKit - must be called at module level before any components use it
 createAppKit({
   adapters: [wagmiAdapter],
-  networks: [liskSepolia],
+  networks: [celoSepolia, celo],
   projectId,
   metadata,
   themeMode: 'dark',
@@ -34,5 +32,4 @@ createAppKit({
   }
 });
 
-// Export the chain for use elsewhere
-export { liskSepolia };
+export { celo, celoSepolia };

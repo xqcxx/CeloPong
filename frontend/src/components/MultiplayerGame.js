@@ -1,11 +1,14 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAccount } from 'wagmi';
+import { parseUnits } from 'viem';
 import io from 'socket.io-client';
 import '../styles/Game.css';
 import { BACKEND_URL, INITIAL_RATING } from '../constants';
 import soundManager from '../utils/soundManager';
-import { useStakeAsPlayer2 } from '../hooks/useContract';
+import { useStakeAsPlayer2, useApproveToken } from '../hooks/useContract';
+import { CURRENCIES, isNativeToken } from '../config/currencies';
+import { PONG_ESCROW_ADDRESS } from '../contracts/PongEscrow';
 
 const MultiplayerGame = ({ username }) => {
   const canvasRef = useRef(null);
@@ -53,6 +56,12 @@ const MultiplayerGame = ({ username }) => {
     isSuccess: isPlayer2StakingSuccess,
     error: player2StakingError
   } = useStakeAsPlayer2();
+
+  const {
+    approve: approveToken,
+    isPending: isApprovalPending,
+    isConfirming: isApprovalConfirming
+  } = useApproveToken();
 
   const gameMode = location.state?.gameMode || 'quick';
   const joinRoomCode = location.state?.roomCode;
@@ -227,23 +236,29 @@ const MultiplayerGame = ({ username }) => {
       alert('Please connect your wallet first');
       return;
     }
-
     if (!stakingData) {
       alert('No staking data available');
       return;
     }
 
     console.log('💎 Player2 initiating stake:', stakingData);
-    setStakingErrorMessage(null); // Clear any previous errors
+    setStakingErrorMessage(null);
     setIsPlayer2Staking(true);
 
+    const currency = CURRENCIES[stakingData.stakeCurrency] || CURRENCIES.CELO;
+
     try {
-      await stakeAsPlayer2(stakingData.roomCode, stakingData.stakeAmount);
+      // For ERC-20, approve first
+      if (!isNativeToken(currency.tokenAddress)) {
+        const amountWei = parseUnits(stakingData.stakeAmount, currency.decimals);
+        await approveToken(currency.tokenAddress, PONG_ESCROW_ADDRESS, amountWei);
+      }
+      await stakeAsPlayer2(stakingData.roomCode, currency, stakingData.stakeAmount);
     } catch (error) {
       console.error('Error initiating Player2 stake:', error);
       setIsPlayer2Staking(false);
     }
-  }, [isConnected, stakingData, stakeAsPlayer2]);
+  }, [isConnected, stakingData, stakeAsPlayer2, approveToken]);
 
   // Handle successful Player2 staking transaction
   useEffect(() => {
@@ -257,7 +272,6 @@ const MultiplayerGame = ({ username }) => {
     if (isPlayer2StakingSuccess && player2StakingTxHash && stakingData) {
       console.log('✅ Player2 staking successful! Updating game record...');
 
-      // Update backend with Player2's transaction
       fetch(`${BACKEND_URL}/games`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -266,18 +280,11 @@ const MultiplayerGame = ({ username }) => {
           player2: { name: username, rating: 800 },
           player2Address: address,
           player2TxHash: player2StakingTxHash,
+          stakeCurrency: stakingData.stakeCurrency || 'CELO',
           status: 'ready'
         })
       })
-        .then(res => res.json())
-        .then(data => {
-          console.log('✅ Game record updated with Player2 stake:', data);
-        })
-        .catch(err => {
-          console.error('❌ Failed to update game record:', err);
-        });
 
-      // Notify backend that Player2 has completed staking
       if (socketRef.current) {
         socketRef.current.emit('player2StakeCompleted', {
           roomCode: stakingData.roomCode
@@ -680,7 +687,7 @@ const MultiplayerGame = ({ username }) => {
           <div className="transaction-modal">
             <h2>💎 Staked Match</h2>
             <p style={{ marginBottom: '20px' }}>
-              This is a staked match. You need to stake {stakingData.stakeAmount} ETH to join.
+              Stake {stakingData.stakeAmount} <strong>{stakingData.stakeCurrency || 'CELO'}</strong> to join
             </p>
 
             {/* Error State */}
@@ -725,6 +732,11 @@ const MultiplayerGame = ({ username }) => {
             ) : !isPlayer2Staking ? (
               /* Initial State */
               <>
+                {!isNativeToken(CURRENCIES[stakingData.stakeCurrency]?.tokenAddress) && (
+                  <p style={{ fontSize: '12px', color: '#ffa500', marginBottom: '10px' }}>
+                    You will need to approve the token first, then stake
+                  </p>
+                )}
                 <p style={{ fontSize: '14px', color: '#888', marginBottom: '20px' }}>
                   {isConnected
                     ? `Your wallet: ${address?.slice(0, 6)}...${address?.slice(-4)}`
@@ -757,11 +769,18 @@ const MultiplayerGame = ({ username }) => {
                 <h3>
                   {isPlayer2StakingPending && 'Confirm Transaction in Wallet...'}
                   {isPlayer2StakingConfirming && 'Transaction Confirming...'}
+                  {isApprovalPending && 'Confirm Approval in Wallet...'}
+                  {isApprovalConfirming && 'Approval Confirming...'}
                 </h3>
                 <div className="transaction-spinner"></div>
                 <p>
                   {isPlayer2StakingPending && 'Please confirm the transaction in your wallet'}
                   {isPlayer2StakingConfirming && 'Waiting for blockchain confirmation'}
+                  {isApprovalPending && 'Approve the token for staking'}
+                  {isApprovalConfirming && 'Waiting for approval confirmation'}
+                </p>
+                <p style={{ fontSize: '0.8rem', color: '#888', marginTop: '10px' }}>
+                  {stakingData.stakeAmount} {stakingData.stakeCurrency || 'CELO'}
                 </p>
               </>
             )}

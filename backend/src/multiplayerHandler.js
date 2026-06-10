@@ -146,15 +146,17 @@ class MultiplayerHandler {
 
         if (gameRecord.isStaked && !gameRecord.player2TxHash) {
           // This is a staked match and Player 2 hasn't staked yet
-          console.log(`💎 Staked match detected! Prompting Player 2 to stake ${gameRecord.stakeAmount} ETH`);
+          console.log(`💎 Staked match detected! Prompting Player 2 to stake ${gameRecord.stakeAmount} ${gameRecord.stakeCurrency || 'CELO'}`);
           socket.emit('stakedMatchJoined', {
             roomCode,
             stakeAmount: gameRecord.stakeAmount,
+            stakeCurrency: gameRecord.stakeCurrency || 'CELO',
             player1Address: gameRecord.player1Address
           });
 
           this.io.to(roomCode).emit('waitingForPlayer2Stake', {
-            stakeAmount: gameRecord.stakeAmount
+            stakeAmount: gameRecord.stakeAmount,
+            stakeCurrency: gameRecord.stakeCurrency || 'CELO'
           });
 
           console.log(`⏳ Waiting for Player 2 to stake...`);

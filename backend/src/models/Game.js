@@ -35,6 +35,10 @@ const gameSchema = new mongoose.Schema({
     type: String, // ETH amount as string (e.g., "0.01")
     default: null
   },
+  stakeCurrency: {
+    type: String, // 'CELO', 'cUSD', 'USDC', 'USDT'
+    default: 'CELO'
+  },
   player1Address: {
     type: String, // Ethereum address
     lowercase: true,

@@ -28,6 +28,13 @@ export const SHOW_BACKEND_URL_BANNER =
 
 export const PRIZE_MULTIPLIER = 2;
 
+// Celo chain IDs
+export const CELO_MAINNET_CHAIN_ID = 42220;
+export const CELO_SEPOLIA_CHAIN_ID = 11142220;
+
+// Native currency
+export const NATIVE_CURRENCY_SYMBOL = 'CELO';
+
 export const REMATCH_ROUTE = '/game';
 // Base path for static assets (supports subpath hosting)
 export const PUBLIC_URL = process.env.PUBLIC_URL || '';

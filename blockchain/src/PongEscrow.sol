@@ -6,15 +6,25 @@ import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
  * @title PongEscrow
  * @notice Escrow contract for PONG-IT staking matches
- * @dev Uses pull-based payouts with backend signature verification
+ * @dev Multi-currency: native CELO (address(0)) or any ERC-20 token.
+ *      Creator picks the token; joiner must match it.
+ *      Pull-based payouts with backend signature verification.
  */
 contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
     using ECDSA for bytes32;
     using MessageHashUtils for bytes32;
+    using SafeERC20 for IERC20;
+
+    // ============ Constants ============
+
+    /// @dev Sentinel address representing native CELO (no ERC-20)
+    address public constant NATIVE_TOKEN = address(0);
 
     // ============ Structs ============
 
@@ -22,6 +32,7 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
         address player1;
         address player2;
         uint256 stakeAmount;
+        address stakeToken; // address(0) = native CELO, else ERC-20
         address winner;
         MatchStatus status;
         uint256 createdAt;
@@ -29,11 +40,11 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
     }
 
     enum MatchStatus {
-        NOT_CREATED,    // Default state
-        PLAYER1_STAKED, // Player 1 has staked, waiting for player 2
-        BOTH_STAKED,    // Both players staked, game in progress
-        COMPLETED,      // Winner declared, prize claimed
-        REFUNDED        // Match cancelled, funds returned
+        NOT_CREATED,    // 0 — Default state
+        PLAYER1_STAKED, // 1 — Player 1 has staked, waiting for player 2
+        BOTH_STAKED,    // 2 — Both players staked, game in progress
+        COMPLETED,      // 3 — Winner declared, prize claimed
+        REFUNDED        // 4 — Match cancelled, funds returned
     }
 
     // ============ State Variables ============
@@ -55,6 +66,7 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
     event MatchCreated(
         string indexed roomCode,
         address indexed player1,
+        address indexed stakeToken,
         uint256 stakeAmount,
         uint256 timestamp
     );
@@ -62,6 +74,7 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
     event PlayerJoined(
         string indexed roomCode,
         address indexed player2,
+        address indexed stakeToken,
         uint256 totalPot,
         uint256 timestamp
     );
@@ -69,6 +82,7 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
     event PrizeClaimed(
         string indexed roomCode,
         address indexed winner,
+        address indexed stakeToken,
         uint256 amount,
         uint256 timestamp
     );
@@ -76,6 +90,7 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
     event MatchRefunded(
         string indexed roomCode,
         address indexed player,
+        address indexed stakeToken,
         uint256 amount,
         uint256 timestamp
     );
@@ -84,6 +99,7 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
         string indexed roomCode,
         address indexed player1,
         address indexed player2,
+        address stakeToken,
         uint256 amountEach,
         uint256 timestamp
     );
@@ -104,40 +120,63 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
     // ============ External Functions ============
 
     /**
-     * @notice Player 1 creates a match and stakes ETH
+     * @notice Player 1 creates a match and stakes
      * @param roomCode Unique 6-character room code
+     * @param token    ERC-20 token address, or address(0) for native CELO
+     * @param amount   Stake amount (msg.value when native, token amount when ERC-20)
      */
-    function stakeAsPlayer1(string calldata roomCode)
+    function stakeAsPlayer1(
+        string calldata roomCode,
+        address token,
+        uint256 amount
+    )
         external
         payable
         whenNotPaused
         nonReentrant
     {
-        require(msg.value > 0, "Stake must be greater than 0");
         require(bytes(roomCode).length == 6, "Room code must be 6 characters");
         require(
             matches[roomCode].status == MatchStatus.NOT_CREATED,
             "Match already exists"
         );
 
+        uint256 stakeAmount;
+
+        if (token == NATIVE_TOKEN) {
+            require(amount == 0, "Use msg.value for native stake");
+            require(msg.value > 0, "Native stake must be greater than 0");
+            stakeAmount = msg.value;
+        } else {
+            require(msg.value == 0, "Cannot send CELO with ERC20 stake");
+            require(amount > 0, "Token stake must be greater than 0");
+            stakeAmount = amount;
+            IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        }
+
         matches[roomCode] = Match({
             player1: msg.sender,
             player2: address(0),
-            stakeAmount: msg.value,
+            stakeAmount: stakeAmount,
+            stakeToken: token,
             winner: address(0),
             status: MatchStatus.PLAYER1_STAKED,
             createdAt: block.timestamp,
             completedAt: 0
         });
 
-        emit MatchCreated(roomCode, msg.sender, msg.value, block.timestamp);
+        emit MatchCreated(roomCode, msg.sender, token, stakeAmount, block.timestamp);
     }
 
     /**
-     * @notice Player 2 joins a match and stakes equal amount
+     * @notice Player 2 joins a match — currency is locked by player 1's choice
      * @param roomCode Room code to join
+     * @param amount   Stake amount (msg.value when native, token amount when ERC-20)
      */
-    function stakeAsPlayer2(string calldata roomCode)
+    function stakeAsPlayer2(
+        string calldata roomCode,
+        uint256 amount
+    )
         external
         payable
         whenNotPaused
@@ -150,22 +189,35 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
             "Match not available"
         );
         require(msg.sender != matchData.player1, "Cannot join own match");
-        require(
-            msg.value == matchData.stakeAmount,
-            "Stake must match player 1"
-        );
+
+        address token = matchData.stakeToken; // Locked — player2 has no choice
+
+        if (token == NATIVE_TOKEN) {
+            require(amount == 0, "Use msg.value for native stake");
+            require(
+                msg.value == matchData.stakeAmount,
+                "Native stake must match player 1"
+            );
+        } else {
+            require(msg.value == 0, "Cannot send CELO with ERC20 stake");
+            require(
+                amount == matchData.stakeAmount,
+                "Token stake must match player 1"
+            );
+            IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        }
 
         matchData.player2 = msg.sender;
         matchData.status = MatchStatus.BOTH_STAKED;
 
         uint256 totalPot = matchData.stakeAmount * 2;
 
-        emit PlayerJoined(roomCode, msg.sender, totalPot, block.timestamp);
+        emit PlayerJoined(roomCode, msg.sender, token, totalPot, block.timestamp);
     }
 
     /**
      * @notice Winner claims prize with backend signature (pull-based)
-     * @param roomCode Room code for the match
+     * @param roomCode  Room code for the match
      * @param signature Backend's signature proving msg.sender is the winner
      */
     function claimPrize(string calldata roomCode, bytes calldata signature)
@@ -193,12 +245,12 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
         matchData.completedAt = block.timestamp;
 
         uint256 prize = matchData.stakeAmount * 2;
+        address token = matchData.stakeToken;
 
-        // Transfer prize to winner
-        (bool success, ) = payable(msg.sender).call{value: prize}("");
-        require(success, "Transfer failed");
+        // Transfer prize in the correct currency
+        _transferTo(msg.sender, token, prize);
 
-        emit PrizeClaimed(roomCode, msg.sender, prize, block.timestamp);
+        emit PrizeClaimed(roomCode, msg.sender, token, prize, block.timestamp);
     }
 
     /**
@@ -218,15 +270,13 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
             "Join timeout not reached"
         );
 
-        // Update state before transfer
         matchData.status = MatchStatus.REFUNDED;
         uint256 refundAmount = matchData.stakeAmount;
+        address token = matchData.stakeToken;
 
-        // Transfer refund
-        (bool success, ) = payable(msg.sender).call{value: refundAmount}("");
-        require(success, "Refund failed");
+        _transferTo(msg.sender, token, refundAmount);
 
-        emit MatchRefunded(roomCode, msg.sender, refundAmount, block.timestamp);
+        emit MatchRefunded(roomCode, msg.sender, token, refundAmount, block.timestamp);
     }
 
     /**
@@ -247,33 +297,24 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
             msg.sender == matchData.player1 || msg.sender == matchData.player2,
             "Not a player in this match"
         );
-        require(
-            matchData.completedAt == 0,
-            "Match already completed"
-        );
-
-        // Need a way to determine game end time - could be set by backend call
-        // For now, use createdAt + reasonable game time assumption (1 hour)
+        require(matchData.completedAt == 0, "Match already completed");
         require(
             block.timestamp >= matchData.createdAt + 1 hours + CLAIM_TIMEOUT,
             "Claim timeout not reached"
         );
 
-        // Update state before transfers
         matchData.status = MatchStatus.REFUNDED;
         uint256 refundAmount = matchData.stakeAmount;
+        address token = matchData.stakeToken;
 
-        // Refund both players
-        (bool success1, ) = payable(matchData.player1).call{value: refundAmount}("");
-        require(success1, "Refund to player 1 failed");
-
-        (bool success2, ) = payable(matchData.player2).call{value: refundAmount}("");
-        require(success2, "Refund to player 2 failed");
+        _transferTo(matchData.player1, token, refundAmount);
+        _transferTo(matchData.player2, token, refundAmount);
 
         emit ExpiredMatchRefunded(
             roomCode,
             matchData.player1,
             matchData.player2,
+            token,
             refundAmount,
             block.timestamp
         );
@@ -281,10 +322,6 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
 
     // ============ Admin Functions ============
 
-    /**
-     * @notice Update backend oracle address
-     * @param newOracle New oracle address
-     */
     function updateBackendOracle(address newOracle) external onlyOwner {
         require(newOracle != address(0), "Invalid oracle address");
         address oldOracle = backendOracle;
@@ -293,27 +330,16 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
         emit BackendOracleUpdated(oldOracle, newOracle, block.timestamp);
     }
 
-    /**
-     * @notice Pause the contract (emergency stop)
-     */
     function pause() external onlyOwner {
         _pause();
     }
 
-    /**
-     * @notice Unpause the contract
-     */
     function unpause() external onlyOwner {
         _unpause();
     }
 
     // ============ View Functions ============
 
-    /**
-     * @notice Get match details
-     * @param roomCode Room code to query
-     * @return Match struct
-     */
     function getMatch(string calldata roomCode)
         external
         view
@@ -322,11 +348,6 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
         return matches[roomCode];
     }
 
-    /**
-     * @notice Get match status
-     * @param roomCode Room code to query
-     * @return status Match status enum
-     */
     function getMatchStatus(string calldata roomCode)
         external
         view
@@ -335,17 +356,26 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
         return matches[roomCode].status;
     }
 
-    /**
-     * @notice Check if a room code is available
-     * @param roomCode Room code to check
-     * @return available True if room code can be used
-     */
     function isRoomCodeAvailable(string calldata roomCode)
         external
         view
         returns (bool)
     {
         return matches[roomCode].status == MatchStatus.NOT_CREATED;
+    }
+
+    // ============ Internal Functions ============
+
+    /**
+     * @dev Transfer funds in native CELO or ERC-20
+     */
+    function _transferTo(address to, address token, uint256 amount) internal {
+        if (token == NATIVE_TOKEN) {
+            (bool success, ) = payable(to).call{value: amount}("");
+            require(success, "Native transfer failed");
+        } else {
+            IERC20(token).safeTransfer(to, amount);
+        }
     }
 
     // ============ Fallback Functions ============

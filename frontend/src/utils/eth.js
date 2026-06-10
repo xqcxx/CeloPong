@@ -1,7 +1,6 @@
 import { formatEther, parseEther } from 'viem';
 
 const ZERO = 0n;
-const TWO = 2n;
 
 // Safely parse text/number ETH inputs into wei
 function safeParseEther(value) {
@@ -16,10 +15,14 @@ function safeParseEther(value) {
   }
 }
 
-// Consumes a stake amount and derives stake/payout info in wei + ETH strings
+function toBigInt(value) {
+  if (typeof value === 'bigint') return value;
+  if (typeof value === 'number') return 2n; // fallback — multiplier is always 2
+  return 2n;
+}
 export function computePrizeFromStake(stakeAmount, multiplier = 2n) {
   const stakeWei = safeParseEther(stakeAmount);
-  const multiplierWei = typeof multiplier === 'bigint' ? multiplier : BigInt(multiplier || 1);
+  const multiplierWei = toBigInt(multiplier);
   const payoutWei = stakeWei * multiplierWei;
   if (stakeWei === ZERO && stakeAmount) {
     console.warn('[MyWins] Unable to parse stake amount:', stakeAmount);

@@ -445,7 +445,7 @@ const MyWins = () => {
                         <span className="detail-label">Claim Tx:</span>
                         <span className="detail-value tx-hash">
                           <a
-                            href={`https://sepolia-blockscout.lisk.com/tx/${game.claimTxHash}`}
+                            href={`https://sepolia.celoscan.io/tx/${game.claimTxHash}`}
                             target="_blank"
                             rel="noopener noreferrer"
                           >

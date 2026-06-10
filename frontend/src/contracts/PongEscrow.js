@@ -1,7 +1,29 @@
-// PongEscrow Contract Configuration
-export const PONG_ESCROW_ADDRESS = '0xdDcF06C6312AB27a90a89bC247740DeDBADdc403';
+// PongEscrow Contract Configuration — Celo
+export const PONG_ESCROW_ADDRESS = '0x359556B3716e22d399811A3cb6469613b5b1b208';
 
 export const PONG_ESCROW_ABI = [
+  // Constants
+  {
+    inputs: [],
+    name: 'NATIVE_TOKEN',
+    outputs: [{ internalType: 'address', name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'JOIN_TIMEOUT',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'CLAIM_TIMEOUT',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
   // View functions
   {
     inputs: [{ internalType: 'string', name: 'roomCode', type: 'string' }],
@@ -12,6 +34,7 @@ export const PONG_ESCROW_ABI = [
           { internalType: 'address', name: 'player1', type: 'address' },
           { internalType: 'address', name: 'player2', type: 'address' },
           { internalType: 'uint256', name: 'stakeAmount', type: 'uint256' },
+          { internalType: 'address', name: 'stakeToken', type: 'address' },
           { internalType: 'address', name: 'winner', type: 'address' },
           { internalType: 'enum PongEscrow.MatchStatus', name: 'status', type: 'uint8' },
           { internalType: 'uint256', name: 'createdAt', type: 'uint256' },
@@ -46,17 +69,23 @@ export const PONG_ESCROW_ABI = [
     stateMutability: 'view',
     type: 'function',
   },
-  
-  // Write functions
+  // Write functions — Multi-currency
   {
-    inputs: [{ internalType: 'string', name: 'roomCode', type: 'string' }],
+    inputs: [
+      { internalType: 'string', name: 'roomCode', type: 'string' },
+      { internalType: 'address', name: 'token', type: 'address' },
+      { internalType: 'uint256', name: 'amount', type: 'uint256' },
+    ],
     name: 'stakeAsPlayer1',
     outputs: [],
     stateMutability: 'payable',
     type: 'function',
   },
   {
-    inputs: [{ internalType: 'string', name: 'roomCode', type: 'string' }],
+    inputs: [
+      { internalType: 'string', name: 'roomCode', type: 'string' },
+      { internalType: 'uint256', name: 'amount', type: 'uint256' },
+    ],
     name: 'stakeAsPlayer2',
     outputs: [],
     stateMutability: 'payable',
@@ -86,13 +115,35 @@ export const PONG_ESCROW_ABI = [
     stateMutability: 'nonpayable',
     type: 'function',
   },
-  
+  // Admin
+  {
+    inputs: [{ internalType: 'address', name: 'newOracle', type: 'address' }],
+    name: 'updateBackendOracle',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'pause',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'unpause',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
   // Events
   {
     anonymous: false,
     inputs: [
       { indexed: true, internalType: 'string', name: 'roomCode', type: 'string' },
       { indexed: true, internalType: 'address', name: 'player1', type: 'address' },
+      { indexed: true, internalType: 'address', name: 'stakeToken', type: 'address' },
       { indexed: false, internalType: 'uint256', name: 'stakeAmount', type: 'uint256' },
       { indexed: false, internalType: 'uint256', name: 'timestamp', type: 'uint256' },
     ],
@@ -104,6 +155,7 @@ export const PONG_ESCROW_ABI = [
     inputs: [
       { indexed: true, internalType: 'string', name: 'roomCode', type: 'string' },
       { indexed: true, internalType: 'address', name: 'player2', type: 'address' },
+      { indexed: true, internalType: 'address', name: 'stakeToken', type: 'address' },
       { indexed: false, internalType: 'uint256', name: 'totalPot', type: 'uint256' },
       { indexed: false, internalType: 'uint256', name: 'timestamp', type: 'uint256' },
     ],
@@ -115,10 +167,23 @@ export const PONG_ESCROW_ABI = [
     inputs: [
       { indexed: true, internalType: 'string', name: 'roomCode', type: 'string' },
       { indexed: true, internalType: 'address', name: 'winner', type: 'address' },
+      { indexed: true, internalType: 'address', name: 'stakeToken', type: 'address' },
       { indexed: false, internalType: 'uint256', name: 'amount', type: 'uint256' },
       { indexed: false, internalType: 'uint256', name: 'timestamp', type: 'uint256' },
     ],
     name: 'PrizeClaimed',
+    type: 'event',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, internalType: 'string', name: 'roomCode', type: 'string' },
+      { indexed: true, internalType: 'address', name: 'player', type: 'address' },
+      { indexed: true, internalType: 'address', name: 'stakeToken', type: 'address' },
+      { indexed: false, internalType: 'uint256', name: 'amount', type: 'uint256' },
+      { indexed: false, internalType: 'uint256', name: 'timestamp', type: 'uint256' },
+    ],
+    name: 'MatchRefunded',
     type: 'event',
   },
 ];
@@ -132,10 +197,9 @@ export const MatchStatus = {
   REFUNDED: 4,
 };
 
-// Preset stake amounts (in ETH)
-export const STAKE_AMOUNTS = [
-  { value: '0.001', label: '0.001 ETH' },
-  { value: '0.005', label: '0.005 ETH' },
-  { value: '0.01', label: '0.01 ETH' },
-  { value: '0.05', label: '0.05 ETH' },
-];
+// Block explorers
+export const BLOCK_EXPLORER_URL = 'https://sepolia.celoscan.io';
+export const BLOCK_EXPLORER_URL_MAINNET = 'https://celoscan.io';
+
+// Preset stake amounts per currency — populated in currencies.js
+export { CURRENCIES } from '../config/currencies';
