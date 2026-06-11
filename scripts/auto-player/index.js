@@ -26,6 +26,10 @@ if (!currency) {
   process.exit(1);
 }
 
+// Fee currency for gas payment (Celo CIP-64)
+// adapter for 6-decimal tokens, token address for 18-dec, null for native CELO
+const feeCurrency = currency.adapter || currency.token || null;
+
 const p1Key = process.env.PRIVATE_KEY_1;
 const p2Key = process.env.PRIVATE_KEY_2;
 if (!p1Key || !p2Key) {
@@ -78,7 +82,7 @@ async function main() {
     // ── Player 1 stake ──
     try {
       if (currency.token) {
-        const { hash } = await approveToken(wallet1, wallet1.publicClient, currency.token, ESCROW_ADDR, stakeAmount, currency.decimals);
+        const { hash } = await approveToken(wallet1, wallet1.publicClient, currency.token, ESCROW_ADDR, stakeAmount, currency.decimals, feeCurrency);
         step('✅', `${name1} approved ${stakeAmount} ${currencyKey}`, hash);
       }
       const { hash: s1Hash } = await stakeAsPlayer1(wallet1, wallet1.publicClient, code, currency, stakeAmount);
@@ -101,7 +105,7 @@ async function main() {
 
     // ── Challenge ──
     try {
-      const { hash: chHash } = await createChallenge(wallet1, wallet1.publicClient, code, currency, stakeAmount);
+      const { hash: chHash } = await createChallenge(wallet1, wallet1.publicClient, code, currency, stakeAmount, feeCurrency);
       step('📢', `${name1} created challenge`, chHash);
     } catch (e) {
       step('⚠️', `Challenge creation failed: ${e.message}`);
@@ -116,7 +120,7 @@ async function main() {
       }
 
       if (currency.token) {
-        const { hash } = await approveToken(wallet2, wallet2.publicClient, currency.token, ESCROW_ADDR, stakeAmount, currency.decimals);
+        const { hash } = await approveToken(wallet2, wallet2.publicClient, currency.token, ESCROW_ADDR, stakeAmount, currency.decimals, feeCurrency);
         step('✅', `${name2} approved ${stakeAmount} ${currencyKey}`, hash);
       }
       const { hash: s2Hash } = await stakeAsPlayer2(wallet2, wallet2.publicClient, code, currency, stakeAmount);
@@ -188,11 +192,11 @@ async function main() {
 
     // ── Boost functions ──
     const boostActions = [
-      { fn: checkIn,        name: 'checkIn',       skip: 0.05 },
-      { fn: claimDailyReward, name: 'dailyReward', skip: 0.05 },
-      { fn: (w, p) => sendGG(w, p, code), name: 'gg', skip: 0.15 },
-      { fn: practiceMode,   name: 'practice',      skip: 0.30 },
-      { fn: (w, p) => reportMatch(w, p, code, scoreArr[0], scoreArr[1]), name: 'reportMatch', skip: 0.10 },
+      { fn: (w, p) => checkIn(w, p, feeCurrency),        name: 'checkIn',       skip: 0.05 },
+      { fn: (w, p) => claimDailyReward(w, p, feeCurrency), name: 'dailyReward', skip: 0.05 },
+      { fn: (w, p) => sendGG(w, p, code, feeCurrency),   name: 'gg',           skip: 0.15 },
+      { fn: (w, p) => practiceMode(w, p, feeCurrency),    name: 'practice',     skip: 0.30 },
+      { fn: (w, p) => reportMatch(w, p, code, scoreArr[0], scoreArr[1], feeCurrency), name: 'reportMatch', skip: 0.10 },
     ];
 
     const shuffled = shuffle(boostActions);

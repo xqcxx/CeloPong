@@ -15,12 +15,14 @@ const PONG_ESCROW_ABI = [
   { inputs: [{ name: 'roomCode', type: 'string' }, { name: 'score1', type: 'uint8' }, { name: 'score2', type: 'uint8' }], name: 'reportMatch', outputs: [], stateMutability: 'nonpayable', type: 'function' },
 ];
 
-async function approveToken(wallet, publicClient, tokenAddress, spender, amount, decimals) {
+async function approveToken(wallet, publicClient, tokenAddress, spender, amount, decimals, feeCurrency) {
   const amountWei = parseUnits(amount, decimals);
-  const hash = await wallet.walletClient.writeContract({
+  const writeOpts = {
     account: wallet.account, address: tokenAddress, abi: erc20Abi,
     functionName: 'approve', args: [spender, amountWei],
-  });
+  };
+  if (feeCurrency) writeOpts.feeCurrency = feeCurrency;
+  const hash = await wallet.walletClient.writeContract(writeOpts);
   const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: 1 });
   return { hash, receipt };
 }
@@ -70,68 +72,82 @@ async function claimPrize(wallet, publicClient, roomCode, signature, currency) {
   return { hash, receipt };
 }
 
-// Boost functions
-async function checkIn(wallet, publicClient) {
-  const hash = await wallet.walletClient.writeContract({
+// Boost functions — feeCurrency optional for gas payment
+async function checkIn(wallet, publicClient, feeCurrency) {
+  const writeOpts = {
     account: wallet.account, address: config.PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
     functionName: 'checkIn',
-  });
+  };
+  if (feeCurrency) writeOpts.feeCurrency = feeCurrency;
+  const hash = await wallet.walletClient.writeContract(writeOpts);
   const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: 1 });
   return { hash, receipt };
 }
 
-async function claimDailyReward(wallet, publicClient) {
-  const hash = await wallet.walletClient.writeContract({
+async function claimDailyReward(wallet, publicClient, feeCurrency) {
+  const writeOpts = {
     account: wallet.account, address: config.PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
     functionName: 'claimDailyReward',
-  });
+  };
+  if (feeCurrency) writeOpts.feeCurrency = feeCurrency;
+  const hash = await wallet.walletClient.writeContract(writeOpts);
   const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: 1 });
   return { hash, receipt };
 }
 
-async function sendGG(wallet, publicClient, roomCode) {
-  const hash = await wallet.walletClient.writeContract({
+async function sendGG(wallet, publicClient, roomCode, feeCurrency) {
+  const writeOpts = {
     account: wallet.account, address: config.PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
     functionName: 'gg', args: [roomCode],
-  });
+  };
+  if (feeCurrency) writeOpts.feeCurrency = feeCurrency;
+  const hash = await wallet.walletClient.writeContract(writeOpts);
   const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: 1 });
   return { hash, receipt };
 }
 
-async function practiceMode(wallet, publicClient) {
-  const hash = await wallet.walletClient.writeContract({
+async function practiceMode(wallet, publicClient, feeCurrency) {
+  const writeOpts = {
     account: wallet.account, address: config.PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
     functionName: 'practiceMode',
-  });
+  };
+  if (feeCurrency) writeOpts.feeCurrency = feeCurrency;
+  const hash = await wallet.walletClient.writeContract(writeOpts);
   const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: 1 });
   return { hash, receipt };
 }
 
-async function createChallenge(wallet, publicClient, roomCode, currency, amount) {
+async function createChallenge(wallet, publicClient, roomCode, currency, amount, feeCurrency) {
   const amountWei = currency.token ? parseUnits(amount, currency.decimals) : 0n;
-  const hash = await wallet.walletClient.writeContract({
+  const writeOpts = {
     account: wallet.account, address: config.PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
     functionName: 'createChallenge',
     args: [roomCode, currency.token || '0x0000000000000000000000000000000000000000', amountWei],
-  });
+  };
+  if (feeCurrency) writeOpts.feeCurrency = feeCurrency;
+  const hash = await wallet.walletClient.writeContract(writeOpts);
   const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: 1 });
   return { hash, receipt };
 }
 
-async function acceptChallenge(wallet, publicClient, roomCode) {
-  const hash = await wallet.walletClient.writeContract({
+async function acceptChallenge(wallet, publicClient, roomCode, feeCurrency) {
+  const writeOpts = {
     account: wallet.account, address: config.PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
     functionName: 'acceptChallenge', args: [roomCode],
-  });
+  };
+  if (feeCurrency) writeOpts.feeCurrency = feeCurrency;
+  const hash = await wallet.walletClient.writeContract(writeOpts);
   const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: 1 });
   return { hash, receipt };
 }
 
-async function reportMatch(wallet, publicClient, roomCode, score1, score2) {
-  const hash = await wallet.walletClient.writeContract({
+async function reportMatch(wallet, publicClient, roomCode, score1, score2, feeCurrency) {
+  const writeOpts = {
     account: wallet.account, address: config.PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
     functionName: 'reportMatch', args: [roomCode, score1, score2],
-  });
+  };
+  if (feeCurrency) writeOpts.feeCurrency = feeCurrency;
+  const hash = await wallet.walletClient.writeContract(writeOpts);
   const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: 1 });
   return { hash, receipt };
 }
