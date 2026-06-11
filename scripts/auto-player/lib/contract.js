@@ -118,7 +118,7 @@ async function practiceMode(wallet, publicClient, feeCurrency) {
 }
 
 async function createChallenge(wallet, publicClient, roomCode, currency, amount, feeCurrency) {
-  const amountWei = currency.token ? parseUnits(amount, currency.decimals) : 0n;
+  const amountWei = parseUnits(amount, currency.decimals || 18);
   const writeOpts = {
     account: wallet.account, address: config.PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
     functionName: 'createChallenge',
