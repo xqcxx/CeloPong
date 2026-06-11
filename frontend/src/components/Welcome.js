@@ -9,7 +9,7 @@ import soundManager from '../utils/soundManager';
 import { useStakeAsPlayer1, useApproveToken, useWalletBalances } from '../hooks/useContract';
 import { CURRENCIES, isNativeToken, FEE_CURRENCIES } from '../config/currencies';
 import { PONG_ESCROW_ADDRESS, BLOCK_EXPLORER_URL } from '../contracts/PongEscrow';
-import { isMiniPay } from '../utils/minipay';
+import { isMiniPay, supportsFeeAbstraction } from '../utils/minipay';
 import { useLeaderboardSubscription, useBackendUrl } from '../hooks';
 
 const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
@@ -358,7 +358,7 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
       `<button type="button" class="stake-option" data-amount="${v}">${v} ${currency.symbol}</button>`
     ).join('');
 
-    const gasSelector = !inMiniPay ? `
+    const gasSelector = supportsFeeAbstraction() ? `
       <div style="margin-bottom: 15px; padding: 12px; background: rgba(53,208,127,0.08); border-radius: 8px; border: 1px solid rgba(53,208,127,0.2);">
         <label style="display: block; margin-bottom: 6px; color: #888; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;">
           Pay gas with
