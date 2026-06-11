@@ -3,7 +3,7 @@ const { program } = require('commander');
 const config = require('./lib/config');
 const { createWallet, checkBalances } = require('./lib/wallets');
 const { approveToken, stakeAsPlayer1, stakeAsPlayer2, claimPrize, checkIn, claimDailyReward, sendGG, practiceMode, createChallenge, acceptChallenge, reportMatch } = require('./lib/contract');
-const { createGame, getGame } = require('./lib/backend');
+const { createGame, getGame, updatePlayer } = require('./lib/backend');
 const { getName } = require('./lib/names');
 const { log, matchHeader, step, winner, done, balances, colors } = require('./lib/logger');
 const { shuffle, maybe, pickWinner, roomCode } = require('./lib/random');
@@ -179,6 +179,16 @@ async function main() {
     if (!signature) {
       step('❌', 'Failed to get winner signature');
       continue;
+    }
+
+    // ── Update player stats on leaderboard ──
+    try {
+      const loserName = whichWinner === 'player1' ? name2 : name1;
+      await updatePlayer(winnerName, 'win');
+      await updatePlayer(loserName, 'loss');
+      step('📊', 'Leaderboard updated');
+    } catch (e) {
+      step('⚠️', `Leaderboard update failed: ${e.message}`);
     }
 
     // ── Winner claims ──

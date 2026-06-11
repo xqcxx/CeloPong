@@ -14,4 +14,13 @@ async function getGame(roomCode) {
   return res.json();
 }
 
-module.exports = { createGame, getGame };
+async function updatePlayer(name, gameResult) {
+  const res = await fetch(`${config.BACKEND_URL}/players`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, gameResult }),
+  });
+  return res.json();
+}
+
+module.exports = { createGame, getGame, updatePlayer };
