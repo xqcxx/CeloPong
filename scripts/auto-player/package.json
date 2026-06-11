@@ -1,0 +1,15 @@
+{
+  "name": "celopong-auto-player",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Automated game flow runner for PONG-IT on Celo",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "viem": "^2.38.0",
+    "dotenv": "^17.0.0",
+    "commander": "^12.0.0"
+  }
+}
