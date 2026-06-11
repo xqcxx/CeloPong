@@ -6,7 +6,7 @@ import { parseUnits } from 'viem';
 import '../styles/Welcome.css';
 import { BACKEND_URL, SHOW_BACKEND_URL_BANNER } from '../constants';
 import soundManager from '../utils/soundManager';
-import { useStakeAsPlayer1, useApproveToken } from '../hooks/useContract';
+import { useStakeAsPlayer1, useApproveToken, useWalletBalances } from '../hooks/useContract';
 import { CURRENCIES, isNativeToken } from '../config/currencies';
 import { PONG_ESCROW_ADDRESS } from '../contracts/PongEscrow';
 import { isMiniPay } from '../utils/minipay';
@@ -46,6 +46,8 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
     isPending: isApprovalPending,
     isConfirming: isApprovalConfirming
   } = useApproveToken();
+
+  const balances = useWalletBalances(isConnected ? address : null);
 
   useEffect(() => {
     if (!socket) {
@@ -399,15 +401,21 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
         <h2>Choose Staking Currency</h2>
         <p style="margin-bottom: 20px; color: #888;">Your opponent must stake the same currency</p>
         <div class="stake-options" style="display: flex; flex-direction: column; gap: 10px;">
-          ${currencies.map(c => `
-            <button type="button" class="stake-option currency-${c.key}" data-currency="${c.key}" style="display: flex; align-items: center; gap: 12px; padding: 16px; text-align: left;">
-              <span style="font-size: 1.8rem;">${c.icon}</span>
-              <div>
-                <div style="font-weight: bold; color: #fff;">${c.name}</div>
-                <div style="font-size: 0.75rem; color: #888;">${c.symbol}</div>
-              </div>
-            </button>
-          `).join('')}
+          ${currencies.map(c => {
+            const bal = balances?.[c.key];
+            const balStr = isConnected && bal !== null
+              ? `<span style="color: #35D07F; font-size: 0.8rem;"> &mdash; ${bal} ${c.symbol}</span>`
+              : '';
+            return `
+              <button type="button" class="stake-option currency-${c.key}" data-currency="${c.key}" style="display: flex; align-items: center; gap: 12px; padding: 16px; text-align: left;">
+                <span style="font-size: 1.8rem;">${c.icon}</span>
+                <div>
+                  <div style="font-weight: bold; color: #fff;">${c.name}${balStr}</div>
+                  <div style="font-size: 0.75rem; color: #888;">${c.symbol}</div>
+                </div>
+              </button>
+            `;
+          }).join('')}
         </div>
         <div class="buttons" style="margin-top: 20px;">
           <button type="button" id="cancel-currency-btn">Cancel</button>

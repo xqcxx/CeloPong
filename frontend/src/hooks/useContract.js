@@ -1,7 +1,7 @@
-import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { parseEther, parseUnits, erc20Abi } from 'viem';
+import { useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
+import { parseEther, parseUnits, formatEther, formatUnits, erc20Abi } from 'viem';
 import { PONG_ESCROW_ADDRESS, PONG_ESCROW_ABI } from '../contracts/PongEscrow';
-import { isNativeToken } from '../config/currencies';
+import { isNativeToken, CURRENCIES } from '../config/currencies';
 
 // ============ View Hooks ============
 
@@ -197,4 +197,37 @@ export function useClaimRefund() {
   };
 
   return { claimRefund, hash, isPending, isConfirming, isSuccess, error };
+}
+
+// ============ Wallet Balance Hook ============
+
+export function useWalletBalances(address) {
+  const enabled = !!address;
+
+  const { data: celoBalance } = useBalance({ address, enabled });
+
+  const { data: cUSDBalance } = useReadContract({
+    address: CURRENCIES.cUSD.tokenAddress,
+    abi: erc20Abi, functionName: 'balanceOf', args: [address],
+    enabled: enabled && !!CURRENCIES.cUSD.tokenAddress,
+  });
+
+  const { data: usdcBalance } = useReadContract({
+    address: CURRENCIES.USDC.tokenAddress,
+    abi: erc20Abi, functionName: 'balanceOf', args: [address],
+    enabled: enabled && !!CURRENCIES.USDC.tokenAddress,
+  });
+
+  const { data: usdtBalance } = useReadContract({
+    address: CURRENCIES.USDT.tokenAddress,
+    abi: erc20Abi, functionName: 'balanceOf', args: [address],
+    enabled: enabled && !!CURRENCIES.USDT.tokenAddress,
+  });
+
+  return {
+    CELO: celoBalance ? parseFloat(formatEther(celoBalance.value)).toFixed(2) : null,
+    cUSD: cUSDBalance != null ? parseFloat(formatUnits(cUSDBalance, 18)).toFixed(2) : null,
+    USDC: usdcBalance != null ? parseFloat(formatUnits(usdcBalance, 6)).toFixed(2) : null,
+    USDT: usdtBalance != null ? parseFloat(formatUnits(usdtBalance, 6)).toFixed(2) : null,
+  };
 }
