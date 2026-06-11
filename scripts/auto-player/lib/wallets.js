@@ -1,4 +1,5 @@
-const { createPublicClient, createWalletClient, http, privateKeyToAccount, formatUnits, erc20Abi } = require('viem');
+const { createPublicClient, createWalletClient, http, formatUnits, erc20Abi } = require('viem');
+const { privateKeyToAccount } = require('viem/accounts');
 const { celo, celoSepolia } = require('viem/chains');
 const config = require('./config');
 
