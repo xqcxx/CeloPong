@@ -730,6 +730,24 @@ contract PongEscrowTest is Test {
         escrow.checkIn();
     }
 
+    function test_CheckInStreakResetsOnMissedDay() public {
+        vm.prank(player1);
+        escrow.checkIn(); // streak = 1
+        vm.warp(block.timestamp + 24 hours);
+        vm.prank(player1);
+        escrow.checkIn(); // streak = 2
+        vm.warp(block.timestamp + 24 hours);
+        vm.prank(player1);
+        escrow.checkIn(); // streak = 3
+
+        // Miss 3 days (72 hours)
+        vm.warp(block.timestamp + 73 hours);
+        vm.prank(player1);
+        escrow.checkIn(); // should reset to 1
+
+        assertEq(escrow.playerStreaks(player1), 1);
+    }
+
     // ============ Engagement: Daily Reward Tests ============
 
     function test_ClaimDailyReward() public {

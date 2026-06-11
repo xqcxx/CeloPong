@@ -446,7 +446,13 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
             "Already checked in today"
         );
 
+        uint256 previousCheckIn = lastCheckIn[msg.sender];
         lastCheckIn[msg.sender] = block.timestamp;
+
+        // Reset streak if player missed more than 48 hours (missed a full day window)
+        if (playerStreaks[msg.sender] > 0 && previousCheckIn > 0 && block.timestamp > previousCheckIn + 48 hours) {
+            playerStreaks[msg.sender] = 0;
+        }
         playerStreaks[msg.sender]++;
 
         emit PlayerCheckIn(msg.sender, playerStreaks[msg.sender], block.timestamp);
