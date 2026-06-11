@@ -2,7 +2,7 @@
 // Creator picks the currency; joiner is locked to it.
 // Token addresses come from env vars (testnet or mainnet).
 
-import { TOKEN_ADDRESSES } from './env';
+import { TOKEN_ADDRESSES, FEE_ADAPTERS } from './env';
 
 export const CURRENCIES = {
   // Order matters — cUSD first for MiniPay users who primarily hold stablecoins
@@ -53,8 +53,8 @@ export const CURRENCIES = {
 export const FEE_CURRENCIES = {
   CELO: { symbol: 'CELO', address: null, adapter: null },
   cUSD: { symbol: 'cUSD', address: TOKEN_ADDRESSES.cUSD, adapter: null },
-  USDC: { symbol: 'USDC', address: TOKEN_ADDRESSES.USDC, adapter: '0x4822e58de6f5e485eF90df51C41CE01721331dC0' },
-  USDT: { symbol: 'USDT', address: TOKEN_ADDRESSES.USDT, adapter: '0x0e2a3e05bc9a16f5292a6170456a710cb89c6f72' },
+  USDC: { symbol: 'USDC', address: TOKEN_ADDRESSES.USDC, adapter: FEE_ADAPTERS.USDC },
+  USDT: { symbol: 'USDT', address: TOKEN_ADDRESSES.USDT, adapter: FEE_ADAPTERS.USDT },
 };
 
 export function getCurrencyByKey(key) {

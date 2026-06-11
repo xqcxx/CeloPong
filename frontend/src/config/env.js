@@ -19,3 +19,10 @@ export const TOKEN_ADDRESSES = {
   USDC: envVar('USDC'),
   USDT: envVar('USDT'),
 };
+
+// Fee currency adapters (Celo CIP-64)
+// 6-decimal tokens use adapter addresses; 18-decimal tokens use token addresses directly
+export const FEE_ADAPTERS = {
+  USDC: envVar('USDC_ADAPTER'),
+  USDT: envVar('USDT_ADAPTER'),
+};
