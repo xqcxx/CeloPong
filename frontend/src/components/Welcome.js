@@ -22,6 +22,7 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
   const [pendingRoomCode, setPendingRoomCode] = useState(null);
   const [stakingErrorMessage, setStakingErrorMessage] = useState(null);
   const [approvalStep, setApprovalStep] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const inMiniPay = isMiniPay();
   const titleRef = useRef(); // eslint-disable-line no-unused-vars
   const navigate = useNavigate();
@@ -112,6 +113,13 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
       document.removeEventListener('touchstart', handleStartAudio);
     };
   }, [audioStarted, handleStartAudio]);
+
+  // MiniPay onboarding — show once
+  useEffect(() => {
+    if (inMiniPay && !localStorage.getItem('minipay_onboarded')) {
+      setShowOnboarding(true);
+    }
+  }, [inMiniPay]);
 
   // Handle successful staking transaction
   useEffect(() => {
@@ -420,6 +428,7 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
 
   const showCurrencyPicker = () => {
     const currencies = Object.values(CURRENCIES);
+    const hasNoBalance = isConnected && balances && Object.values(balances).every(b => b === null || parseFloat(b) === 0);
     const modal = document.createElement('dialog');
     modal.className = 'stake-modal';
     modal.innerHTML = `
@@ -443,6 +452,15 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
             `;
           }).join('')}
         </div>
+        ${inMiniPay && hasNoBalance ? `
+          <div style="margin-top: 16px; padding: 12px; background: rgba(53,208,127,0.08); border-radius: 8px; text-align: center;">
+            <p style="color: #888; font-size: 0.8rem; margin: 0 0 8px 0;">Need tokens to stake?</p>
+            <a href="https://minipay.opera.com/add_cash" target="_blank" rel="noopener"
+               style="color: #35D07F; text-decoration: none; font-size: 0.85rem; font-weight: bold;">
+              Get cUSD via MiniPay ↗
+            </a>
+          </div>
+        ` : ''}
         <div class="buttons" style="margin-top: 20px;">
           <button type="button" id="cancel-currency-btn">Cancel</button>
         </div>
@@ -475,6 +493,35 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
 
   return (
     <div className="welcome">
+      {/* MiniPay First-Visit Onboarding Banner */}
+      {showOnboarding && (
+        <div style={{
+          background: 'linear-gradient(135deg, #35D07F 0%, #1a7a4c 100%)',
+          color: '#fff', padding: '16px 20px', margin: '-16px -16px 16px -16px',
+          textAlign: 'center', position: 'relative'
+        }}>
+          <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold', lineHeight: 1.4 }}>
+            Stake cUSD. Play Pong. Win 2&times; back.
+          </p>
+          <p style={{ margin: '6px 0 0 0', fontSize: '0.75rem', opacity: 0.85 }}>
+            Built for MiniPay on Celo
+          </p>
+          <button
+            onClick={() => {
+              setShowOnboarding(false);
+              localStorage.setItem('minipay_onboarded', '1');
+            }}
+            style={{
+              position: 'absolute', top: 8, right: 12,
+              background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 4,
+              color: '#fff', padding: '2px 8px', cursor: 'pointer', fontSize: '0.7rem'
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Wallet Connect Button — hidden in MiniPay (implicit connection) */}
       <div className="wallet-connect-container">
         {!inMiniPay && (
