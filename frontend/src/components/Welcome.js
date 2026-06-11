@@ -8,7 +8,7 @@ import { BACKEND_URL, SHOW_BACKEND_URL_BANNER } from '../constants';
 import soundManager from '../utils/soundManager';
 import { useStakeAsPlayer1, useApproveToken, useWalletBalances } from '../hooks/useContract';
 import { CURRENCIES, isNativeToken, FEE_CURRENCIES } from '../config/currencies';
-import { PONG_ESCROW_ADDRESS } from '../contracts/PongEscrow';
+import { PONG_ESCROW_ADDRESS, BLOCK_EXPLORER_URL } from '../contracts/PongEscrow';
 import { isMiniPay } from '../utils/minipay';
 import { useLeaderboardSubscription, useBackendUrl } from '../hooks';
 
@@ -22,6 +22,8 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
   const [pendingRoomCode, setPendingRoomCode] = useState(null);
   const [stakingErrorMessage, setStakingErrorMessage] = useState(null);
   const [approvalStep, setApprovalStep] = useState(false);
+  const [stakingConfirmed, setStakingConfirmed] = useState(false);
+  const [confirmedTxHash, setConfirmedTxHash] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const inMiniPay = isMiniPay();
   const titleRef = useRef(); // eslint-disable-line no-unused-vars
@@ -142,33 +144,43 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
         })
       }).catch(err => console.error('Failed to create game record:', err));
 
-      setStakingInProgress(false);
-      setGameState(prev => ({
-        ...prev,
-        player1: { name: savedUsername, rating: 800 },
-        gameMode: 'create-staked',
-        roomCode: pendingRoomCode,
-        stakeAmount: selectedStakeAmount,
-        stakeCurrency: currencyKey,
-        player1Address: address,
-        player1TxHash: stakingTxHash
-      }));
+      // Show confirmation for 2.5s before navigating
+      setStakingConfirmed(true);
+      setConfirmedTxHash(stakingTxHash);
 
-      navigate('/game', {
-        state: {
+      const timer = setTimeout(() => {
+        setStakingInProgress(false);
+        setStakingConfirmed(false);
+        setConfirmedTxHash(null);
+        setGameState(prev => ({
+          ...prev,
+          player1: { name: savedUsername, rating: 800 },
           gameMode: 'create-staked',
           roomCode: pendingRoomCode,
           stakeAmount: selectedStakeAmount,
           stakeCurrency: currencyKey,
-          currencySymbol,
           player1Address: address,
           player1TxHash: stakingTxHash
-        }
-      });
+        }));
 
-      setPendingRoomCode(null);
-      setSelectedStakeAmount(null);
-      setSelectedCurrency(null);
+        navigate('/game', {
+          state: {
+            gameMode: 'create-staked',
+            roomCode: pendingRoomCode,
+            stakeAmount: selectedStakeAmount,
+            stakeCurrency: currencyKey,
+            currencySymbol,
+            player1Address: address,
+            player1TxHash: stakingTxHash
+          }
+        });
+
+        setPendingRoomCode(null);
+        setSelectedStakeAmount(null);
+        setSelectedCurrency(null);
+      }, 2500);
+
+      return () => clearTimeout(timer);
     }
   }, [isStakingSuccess, pendingRoomCode, stakingTxHash, selectedStakeAmount, selectedCurrency, approvalStep, savedUsername, address, navigate, setGameState]);
 
@@ -643,19 +655,44 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
               ) : (
                 <>
                   <h3>
-                    {approvalStep && isApprovalPending && 'Step 1/2: Approve Token in Wallet...'}
-                    {approvalStep && isApprovalConfirming && 'Step 1/2: Approval Confirming...'}
-                    {!approvalStep && isStakingPending && 'Step ' + (selectedCurrency && !isNativeToken(selectedCurrency.tokenAddress) ? '2/2' : '1/1') + ': Confirm Stake in Wallet...'}
-                    {!approvalStep && isStakingConfirming && 'Stake Confirming...'}
+                    {stakingConfirmed && 'Transaction Confirmed!'}
+                    {!stakingConfirmed && approvalStep && isApprovalPending && 'Step 1/2: Approve Token in Wallet...'}
+                    {!stakingConfirmed && approvalStep && isApprovalConfirming && 'Step 1/2: Approval Confirming...'}
+                    {!stakingConfirmed && !approvalStep && isStakingPending && 'Step ' + (selectedCurrency && !isNativeToken(selectedCurrency.tokenAddress) ? '2/2' : '1/1') + ': Confirm Stake in Wallet...'}
+                    {!stakingConfirmed && !approvalStep && isStakingConfirming && 'Stake Confirming...'}
                   </h3>
-                  <div className="transaction-spinner"></div>
-                  <p>
-                    {approvalStep && isApprovalPending && 'Approve the contract to use your ' + (selectedCurrency?.symbol || '')}
-                    {approvalStep && isApprovalConfirming && 'Waiting for approval confirmation...'}
-                    {!approvalStep && isStakingPending && 'Confirm the stake transaction in your wallet'}
-                    {!approvalStep && isStakingConfirming && 'Waiting for blockchain confirmation...'}
-                  </p>
-                  {selectedCurrency && (
+                  {!stakingConfirmed && <div className="transaction-spinner"></div>}
+                  {stakingConfirmed ? (
+                    <>
+                      <p style={{ color: '#35D07F', fontSize: '0.9rem' }}>
+                        Stake successful!
+                      </p>
+                      {confirmedTxHash && (
+                        <a
+                          href={`${BLOCK_EXPLORER_URL}/tx/${confirmedTxHash}`}
+                          target="_blank" rel="noopener noreferrer"
+                          style={{
+                            display: 'inline-block', marginTop: 8, padding: '8px 16px',
+                            background: '#35D07F', color: '#000', borderRadius: 6,
+                            textDecoration: 'none', fontSize: '0.8rem', fontWeight: 'bold'
+                          }}
+                        >
+                          View on Celoscan ↗
+                        </a>
+                      )}
+                      <p style={{ fontSize: '0.7rem', color: '#888', marginTop: 8 }}>
+                        Joining game in a moment...
+                      </p>
+                    </>
+                  ) : (
+                    <p>
+                      {approvalStep && isApprovalPending && 'Approve the contract to use your ' + (selectedCurrency?.symbol || '')}
+                      {approvalStep && isApprovalConfirming && 'Waiting for approval confirmation...'}
+                      {!approvalStep && isStakingPending && 'Confirm the stake transaction in your wallet'}
+                      {!approvalStep && isStakingConfirming && 'Waiting for blockchain confirmation...'}
+                    </p>
+                  )}
+                  {selectedCurrency && !stakingConfirmed && (
                     <p style={{ fontSize: '0.8rem', color: '#888', marginTop: '10px' }}>
                       Staking {selectedStakeAmount} {selectedCurrency.symbol} {selectedCurrency.icon}
                     </p>
