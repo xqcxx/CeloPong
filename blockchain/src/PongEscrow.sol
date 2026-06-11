@@ -61,6 +61,54 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
     /// @notice Timeout for winner to claim prize (30 days)
     uint256 public constant CLAIM_TIMEOUT = 30 days;
 
+    // ============ Engagement State ============
+
+    /// @notice Last check-in timestamp per player
+    mapping(address => uint256) public lastCheckIn;
+
+    /// @notice Consecutive check-in streak per player
+    mapping(address => uint256) public playerStreaks;
+
+    /// @notice Last daily reward claim timestamp
+    mapping(address => uint256) public lastRewardClaim;
+
+    /// @notice Total daily rewards claimed
+    mapping(address => uint256) public totalClaims;
+
+    /// @notice GG count per player
+    mapping(address => uint256) public ggCount;
+
+    /// @notice Whether a player has sent GG for a specific match
+    mapping(string => mapping(address => bool)) public ggSent;
+
+    /// @notice Practice session count per player
+    mapping(address => uint256) public playerPracticeCount;
+
+    // ============ Challenge Struct & State ============
+
+    struct Challenge {
+        address creator;
+        address token;
+        uint256 amount;
+        uint256 createdAt;
+        uint256 expiresAt;
+        address acceptor;
+        bool accepted;
+    }
+
+    mapping(string => Challenge) public challenges;
+
+    // ============ Match Score Struct & State ============
+
+    struct MatchScore {
+        uint8 score1;
+        uint8 score2;
+        address reporter;
+        uint256 reportedAt;
+    }
+
+    mapping(string => MatchScore) public matchScores;
+
     // ============ Events ============
 
     event MatchCreated(
@@ -107,6 +155,55 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
     event BackendOracleUpdated(
         address indexed oldOracle,
         address indexed newOracle,
+        uint256 timestamp
+    );
+
+    // ============ Engagement Events ============
+
+    event PlayerCheckIn(
+        address indexed player,
+        uint256 streak,
+        uint256 timestamp
+    );
+
+    event DailyRewardClaimed(
+        address indexed player,
+        uint256 totalClaims,
+        uint256 timestamp
+    );
+
+    event GGSent(
+        string indexed roomCode,
+        address indexed player,
+        uint256 totalGGs,
+        uint256 timestamp
+    );
+
+    event ChallengeCreated(
+        string indexed roomCode,
+        address indexed creator,
+        address token,
+        uint256 amount,
+        uint256 timestamp
+    );
+
+    event ChallengeAccepted(
+        string indexed roomCode,
+        address indexed acceptor,
+        uint256 timestamp
+    );
+
+    event PracticeSession(
+        address indexed player,
+        uint256 totalPractices,
+        uint256 timestamp
+    );
+
+    event MatchReported(
+        string indexed roomCode,
+        address indexed reporter,
+        uint8 score1,
+        uint8 score2,
         uint256 timestamp
     );
 
@@ -336,6 +433,161 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
 
     function unpause() external onlyOwner {
         _unpause();
+    }
+
+    // ============ Engagement Functions ============
+
+    /**
+     * @notice Record a daily check-in to build a streak
+     */
+    function checkIn() external {
+        require(
+            lastCheckIn[msg.sender] == 0 || block.timestamp >= lastCheckIn[msg.sender] + 24 hours,
+            "Already checked in today"
+        );
+
+        lastCheckIn[msg.sender] = block.timestamp;
+        playerStreaks[msg.sender]++;
+
+        emit PlayerCheckIn(msg.sender, playerStreaks[msg.sender], block.timestamp);
+    }
+
+    /**
+     * @notice Claim a daily reward token (gas-only, no funds transferred)
+     */
+    function claimDailyReward() external {
+        require(
+            lastRewardClaim[msg.sender] == 0 || block.timestamp >= lastRewardClaim[msg.sender] + 1 days,
+            "Already claimed today"
+        );
+
+        lastRewardClaim[msg.sender] = block.timestamp;
+        totalClaims[msg.sender]++;
+
+        emit DailyRewardClaimed(msg.sender, totalClaims[msg.sender], block.timestamp);
+    }
+
+    /**
+     * @notice Send a GG (good game) to an opponent after a completed match
+     * @param roomCode Room code of the completed match
+     */
+    function gg(string calldata roomCode) external {
+        Match storage m = matches[roomCode];
+        require(
+            m.player1 == msg.sender || m.player2 == msg.sender,
+            "Not a participant"
+        );
+        require(
+            m.status == MatchStatus.COMPLETED,
+            "Match not completed"
+        );
+        require(!ggSent[roomCode][msg.sender], "Already sent GG");
+
+        ggSent[roomCode][msg.sender] = true;
+        ggCount[msg.sender]++;
+
+        emit GGSent(roomCode, msg.sender, ggCount[msg.sender], block.timestamp);
+    }
+
+    /**
+     * @notice Record a practice session (gas-only, no gameplay impact)
+     */
+    function practiceMode() external {
+        playerPracticeCount[msg.sender]++;
+
+        emit PracticeSession(msg.sender, playerPracticeCount[msg.sender], block.timestamp);
+    }
+
+    /**
+     * @notice Create an open challenge for a staked match
+     * @param roomCode Room code (must match an existing PLAYER1_STAKED or NOT_CREATED match)
+     * @param token    ERC-20 token address, or address(0) for native CELO
+     * @param amount   Stake amount
+     */
+    function createChallenge(
+        string calldata roomCode,
+        address token,
+        uint256 amount
+    ) external {
+        require(bytes(roomCode).length == 6, "Room code must be 6 characters");
+        require(
+            challenges[roomCode].createdAt == 0,
+            "Challenge already exists"
+        );
+
+        Match storage m = matches[roomCode];
+
+        // If match already staked, validate consistency
+        if (m.status == MatchStatus.PLAYER1_STAKED) {
+            require(m.player1 == msg.sender, "Not your match");
+            require(m.stakeToken == token, "Token mismatch");
+            require(m.stakeAmount == amount, "Amount mismatch");
+        } else if (m.status == MatchStatus.NOT_CREATED) {
+            // Allow creating challenge before staking (Sub-flow B)
+        } else {
+            revert("Match not available for challenge");
+        }
+
+        challenges[roomCode] = Challenge({
+            creator: msg.sender,
+            token: token,
+            amount: amount,
+            createdAt: block.timestamp,
+            expiresAt: block.timestamp + 1 hours,
+            acceptor: address(0),
+            accepted: false
+        });
+
+        emit ChallengeCreated(roomCode, msg.sender, token, amount, block.timestamp);
+    }
+
+    /**
+     * @notice Accept an open challenge
+     * @param roomCode Room code of the challenge
+     */
+    function acceptChallenge(string calldata roomCode) external {
+        Challenge storage c = challenges[roomCode];
+        require(c.createdAt != 0, "Challenge not found");
+        require(!c.accepted, "Already accepted");
+        require(msg.sender != c.creator, "Cannot accept own challenge");
+        require(block.timestamp < c.expiresAt, "Challenge expired");
+
+        c.acceptor = msg.sender;
+        c.accepted = true;
+
+        emit ChallengeAccepted(roomCode, msg.sender, block.timestamp);
+    }
+
+    /**
+     * @notice Report a match score on-chain after game completion
+     * @param roomCode Room code of the completed match
+     * @param score1   Player 1's final score
+     * @param score2   Player 2's final score
+     */
+    function reportMatch(
+        string calldata roomCode,
+        uint8 score1,
+        uint8 score2
+    ) external {
+        Match storage m = matches[roomCode];
+        require(
+            m.player1 == msg.sender || m.player2 == msg.sender,
+            "Not a participant"
+        );
+        require(
+            m.status == MatchStatus.COMPLETED,
+            "Match not completed"
+        );
+        require(matchScores[roomCode].reportedAt == 0, "Already reported");
+
+        matchScores[roomCode] = MatchScore({
+            score1: score1,
+            score2: score2,
+            reporter: msg.sender,
+            reportedAt: block.timestamp
+        });
+
+        emit MatchReported(roomCode, msg.sender, score1, score2, block.timestamp);
     }
 
     // ============ View Functions ============

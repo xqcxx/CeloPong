@@ -41,6 +41,15 @@ contract PongEscrowTest is Test {
     event MatchRefunded(string indexed roomCode, address indexed player, address indexed stakeToken, uint256 amount, uint256 timestamp);
     event ExpiredMatchRefunded(string indexed roomCode, address indexed player1, address indexed player2, address stakeToken, uint256 amountEach, uint256 timestamp);
 
+    // Engagement events
+    event PlayerCheckIn(address indexed player, uint256 streak, uint256 timestamp);
+    event DailyRewardClaimed(address indexed player, uint256 totalClaims, uint256 timestamp);
+    event GGSent(string indexed roomCode, address indexed player, uint256 totalGGs, uint256 timestamp);
+    event ChallengeCreated(string indexed roomCode, address indexed creator, address token, uint256 amount, uint256 timestamp);
+    event ChallengeAccepted(string indexed roomCode, address indexed acceptor, uint256 timestamp);
+    event PracticeSession(address indexed player, uint256 totalPractices, uint256 timestamp);
+    event MatchReported(string indexed roomCode, address indexed reporter, uint8 score1, uint8 score2, uint256 timestamp);
+
     function setUp() public {
         owner = address(this);
         backendPrivateKey = 0xA11CE;
@@ -688,7 +697,334 @@ contract PongEscrowTest is Test {
         assertEq(matchData.stakeAmount, amount);
     }
 
+    // ============ Engagement: Check-In Tests ============
+
+    function test_CheckIn() public {
+        vm.prank(player1);
+        vm.expectEmit(true, false, false, false);
+        emit PlayerCheckIn(player1, 1, block.timestamp);
+        escrow.checkIn();
+
+        assertEq(escrow.playerStreaks(player1), 1);
+        assertEq(escrow.lastCheckIn(player1), block.timestamp);
+    }
+
+    function test_CheckInIncrementsStreak() public {
+        vm.prank(player1);
+        escrow.checkIn();
+        assertEq(escrow.playerStreaks(player1), 1);
+
+        vm.warp(block.timestamp + 24 hours);
+        vm.prank(player1);
+        escrow.checkIn();
+        assertEq(escrow.playerStreaks(player1), 2);
+    }
+
+    function test_CheckInRevertsSameDay() public {
+        vm.prank(player1);
+        escrow.checkIn();
+
+        vm.warp(block.timestamp + 1 hours);
+        vm.prank(player1);
+        vm.expectRevert("Already checked in today");
+        escrow.checkIn();
+    }
+
+    // ============ Engagement: Daily Reward Tests ============
+
+    function test_ClaimDailyReward() public {
+        vm.prank(player1);
+        vm.expectEmit(true, false, false, false);
+        emit DailyRewardClaimed(player1, 1, block.timestamp);
+        escrow.claimDailyReward();
+
+        assertEq(escrow.totalClaims(player1), 1);
+    }
+
+    function test_ClaimDailyRewardRevertsSameDay() public {
+        vm.prank(player1);
+        escrow.claimDailyReward();
+
+        vm.warp(block.timestamp + 23 hours);
+        vm.prank(player1);
+        vm.expectRevert("Already claimed today");
+        escrow.claimDailyReward();
+    }
+
+    function test_ClaimDailyRewardMultipleUsers() public {
+        vm.prank(player1);
+        escrow.claimDailyReward();
+        vm.prank(player2);
+        escrow.claimDailyReward();
+
+        assertEq(escrow.totalClaims(player1), 1);
+        assertEq(escrow.totalClaims(player2), 1);
+    }
+
+    // ============ Engagement: GG Tests ============
+
+    function test_GG() public {
+        _setupCompletedMatch();
+        bytes memory sig = _signWinner(ROOM_CODE, player1);
+
+        vm.prank(player1);
+        escrow.claimPrize(ROOM_CODE, sig);
+
+        vm.prank(player1);
+        vm.expectEmit(true, true, false, false);
+        emit GGSent(ROOM_CODE, player1, 1, block.timestamp);
+        escrow.gg(ROOM_CODE);
+
+        assertEq(escrow.ggCount(player1), 1);
+        assertTrue(escrow.ggSent(ROOM_CODE, player1));
+    }
+
+    function test_GGFromLoser() public {
+        _setupCompletedMatch();
+        bytes memory sig = _signWinner(ROOM_CODE, player1);
+
+        vm.prank(player1);
+        escrow.claimPrize(ROOM_CODE, sig);
+
+        vm.prank(player2);
+        escrow.gg(ROOM_CODE);
+
+        assertEq(escrow.ggCount(player2), 1);
+    }
+
+    function test_GGRevertsIfNotParticipant() public {
+        _setupCompletedMatch();
+        bytes memory sig = _signWinner(ROOM_CODE, player1);
+        vm.prank(player1);
+        escrow.claimPrize(ROOM_CODE, sig);
+
+        vm.prank(player3);
+        vm.expectRevert("Not a participant");
+        escrow.gg(ROOM_CODE);
+    }
+
+    function test_GGRevertsIfMatchNotCompleted() public {
+        vm.prank(player1);
+        escrow.stakeAsPlayer1{value: STAKE_AMOUNT_NATIVE}(ROOM_CODE, NATIVE_TOKEN, 0);
+
+        vm.prank(player1);
+        vm.expectRevert("Match not completed");
+        escrow.gg(ROOM_CODE);
+    }
+
+    function test_GGRevertsDoubleSend() public {
+        _setupCompletedMatch();
+        bytes memory sig = _signWinner(ROOM_CODE, player1);
+        vm.prank(player1);
+        escrow.claimPrize(ROOM_CODE, sig);
+
+        vm.prank(player1);
+        escrow.gg(ROOM_CODE);
+
+        vm.prank(player1);
+        vm.expectRevert("Already sent GG");
+        escrow.gg(ROOM_CODE);
+    }
+
+    // ============ Engagement: Practice Mode Tests ============
+
+    function test_PracticeMode() public {
+        vm.prank(player1);
+        vm.expectEmit(true, false, false, false);
+        emit PracticeSession(player1, 1, block.timestamp);
+        escrow.practiceMode();
+
+        assertEq(escrow.playerPracticeCount(player1), 1);
+    }
+
+    function test_PracticeModeMultipleTimes() public {
+        vm.startPrank(player1);
+        escrow.practiceMode();
+        escrow.practiceMode();
+        escrow.practiceMode();
+        vm.stopPrank();
+
+        assertEq(escrow.playerPracticeCount(player1), 3);
+    }
+
+    function test_PracticeModeMultiplePlayers() public {
+        vm.prank(player1);
+        escrow.practiceMode();
+        vm.prank(player2);
+        escrow.practiceMode();
+
+        assertEq(escrow.playerPracticeCount(player1), 1);
+        assertEq(escrow.playerPracticeCount(player2), 1);
+    }
+
+    // ============ Engagement: Challenge Tests ============
+
+    function test_CreateChallengeAfterStake() public {
+        vm.prank(player1);
+        escrow.stakeAsPlayer1{value: STAKE_AMOUNT_NATIVE}(ROOM_CODE, NATIVE_TOKEN, 0);
+
+        vm.prank(player1);
+        vm.expectEmit(true, true, false, true);
+        emit ChallengeCreated(ROOM_CODE, player1, NATIVE_TOKEN, STAKE_AMOUNT_NATIVE, block.timestamp);
+        escrow.createChallenge(ROOM_CODE, NATIVE_TOKEN, STAKE_AMOUNT_NATIVE);
+
+        (address chCreator, address chToken, uint256 chAmount, , , , bool chAccepted) = escrow.challenges(ROOM_CODE);
+        assertEq(chCreator, player1);
+        assertEq(chToken, NATIVE_TOKEN);
+        assertEq(chAmount, STAKE_AMOUNT_NATIVE);
+        assertFalse(chAccepted);
+    }
+
+    function test_CreateChallengeBeforeStake() public {
+        // Sub-flow B: create challenge first, stake after
+        vm.prank(player1);
+        escrow.createChallenge(ROOM_CODE, NATIVE_TOKEN, STAKE_AMOUNT_NATIVE);
+
+        (address chCreator2, address chToken2, uint256 chAmount2, , , , bool chAccepted2) = escrow.challenges(ROOM_CODE);
+        assertEq(chCreator2, player1);
+        assertEq(chAmount2, STAKE_AMOUNT_NATIVE);
+    }
+
+    function test_CreateChallengeTokenMismatch() public {
+        vm.prank(player1);
+        escrow.stakeAsPlayer1{value: STAKE_AMOUNT_NATIVE}(ROOM_CODE, NATIVE_TOKEN, 0);
+
+        vm.prank(player1);
+        vm.expectRevert("Token mismatch");
+        escrow.createChallenge(ROOM_CODE, address(cUSD), STAKE_AMOUNT_NATIVE);
+    }
+
+    function test_CreateChallengeAmountMismatch() public {
+        vm.prank(player1);
+        escrow.stakeAsPlayer1{value: STAKE_AMOUNT_NATIVE}(ROOM_CODE, NATIVE_TOKEN, 0);
+
+        vm.prank(player1);
+        vm.expectRevert("Amount mismatch");
+        escrow.createChallenge(ROOM_CODE, NATIVE_TOKEN, STAKE_AMOUNT_NATIVE + 1 ether);
+    }
+
+    function test_CreateChallengeInvalidRoomCode() public {
+        vm.prank(player1);
+        vm.expectRevert("Room code must be 6 characters");
+        escrow.createChallenge("ABC", NATIVE_TOKEN, STAKE_AMOUNT_NATIVE);
+    }
+
+    function test_CreateChallengeDuplicate() public {
+        vm.prank(player1);
+        escrow.createChallenge(ROOM_CODE, NATIVE_TOKEN, STAKE_AMOUNT_NATIVE);
+
+        vm.prank(player1);
+        vm.expectRevert("Challenge already exists");
+        escrow.createChallenge(ROOM_CODE, NATIVE_TOKEN, STAKE_AMOUNT_NATIVE);
+    }
+
+    function test_AcceptChallenge() public {
+        vm.prank(player1);
+        escrow.createChallenge(ROOM_CODE, NATIVE_TOKEN, STAKE_AMOUNT_NATIVE);
+
+        vm.prank(player2);
+        vm.expectEmit(true, true, false, false);
+        emit ChallengeAccepted(ROOM_CODE, player2, block.timestamp);
+        escrow.acceptChallenge(ROOM_CODE);
+
+        (, , , , , address chAcceptor2, bool cAccepted2) = escrow.challenges(ROOM_CODE);
+        assertTrue(cAccepted2);
+        assertEq(chAcceptor2, player2);
+    }
+
+    function test_AcceptChallengeRevertsOwnChallenge() public {
+        vm.prank(player1);
+        escrow.createChallenge(ROOM_CODE, NATIVE_TOKEN, STAKE_AMOUNT_NATIVE);
+
+        vm.prank(player1);
+        vm.expectRevert("Cannot accept own challenge");
+        escrow.acceptChallenge(ROOM_CODE);
+    }
+
+    function test_AcceptChallengeRevertsExpired() public {
+        vm.prank(player1);
+        escrow.createChallenge(ROOM_CODE, NATIVE_TOKEN, STAKE_AMOUNT_NATIVE);
+
+        vm.warp(block.timestamp + 2 hours);
+
+        vm.prank(player2);
+        vm.expectRevert("Challenge expired");
+        escrow.acceptChallenge(ROOM_CODE);
+    }
+
+    function test_AcceptChallengeRevertsAlreadyAccepted() public {
+        vm.prank(player1);
+        escrow.createChallenge(ROOM_CODE, NATIVE_TOKEN, STAKE_AMOUNT_NATIVE);
+
+        vm.prank(player2);
+        escrow.acceptChallenge(ROOM_CODE);
+
+        vm.prank(player3);
+        vm.expectRevert("Already accepted");
+        escrow.acceptChallenge(ROOM_CODE);
+    }
+
+    // ============ Engagement: Report Match Tests ============
+
+    function test_ReportMatch() public {
+        _setupCompletedMatch();
+        bytes memory sig = _signWinner(ROOM_CODE, player1);
+        vm.prank(player1);
+        escrow.claimPrize(ROOM_CODE, sig);
+
+        vm.prank(player1);
+        vm.expectEmit(true, true, false, true);
+        emit MatchReported(ROOM_CODE, player1, 5, 3, block.timestamp);
+        escrow.reportMatch(ROOM_CODE, 5, 3);
+
+        (uint8 s1, uint8 s2, address rep, uint256 at) = escrow.matchScores(ROOM_CODE);
+        assertEq(s1, 5);
+        assertEq(s2, 3);
+        assertEq(rep, player1);
+    }
+
+    function test_ReportMatchRevertsNotParticipant() public {
+        _setupCompletedMatch();
+        bytes memory sig = _signWinner(ROOM_CODE, player1);
+        vm.prank(player1);
+        escrow.claimPrize(ROOM_CODE, sig);
+
+        vm.prank(player3);
+        vm.expectRevert("Not a participant");
+        escrow.reportMatch(ROOM_CODE, 5, 3);
+    }
+
+    function test_ReportMatchRevertsNotCompleted() public {
+        vm.prank(player1);
+        escrow.stakeAsPlayer1{value: STAKE_AMOUNT_NATIVE}(ROOM_CODE, NATIVE_TOKEN, 0);
+
+        vm.prank(player1);
+        vm.expectRevert("Match not completed");
+        escrow.reportMatch(ROOM_CODE, 5, 3);
+    }
+
+    function test_ReportMatchRevertsAlreadyReported() public {
+        _setupCompletedMatch();
+        bytes memory sig = _signWinner(ROOM_CODE, player1);
+        vm.prank(player1);
+        escrow.claimPrize(ROOM_CODE, sig);
+
+        vm.prank(player1);
+        escrow.reportMatch(ROOM_CODE, 5, 3);
+
+        vm.prank(player2);
+        vm.expectRevert("Already reported");
+        escrow.reportMatch(ROOM_CODE, 5, 3);
+    }
+
     // ============ Helper Functions ============
+
+    function _setupCompletedMatch() internal {
+        vm.prank(player1);
+        escrow.stakeAsPlayer1{value: STAKE_AMOUNT_NATIVE}(ROOM_CODE, NATIVE_TOKEN, 0);
+        vm.prank(player2);
+        escrow.stakeAsPlayer2{value: STAKE_AMOUNT_NATIVE}(ROOM_CODE, 0);
+    }
 
     function _signWinner(string memory roomCode, address winner) internal view returns (bytes memory) {
         bytes32 messageHash = keccak256(abi.encodePacked(roomCode, winner));
