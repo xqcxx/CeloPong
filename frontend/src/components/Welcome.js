@@ -7,7 +7,7 @@ import '../styles/Welcome.css';
 import { BACKEND_URL, SHOW_BACKEND_URL_BANNER } from '../constants';
 import soundManager from '../utils/soundManager';
 import { useStakeAsPlayer1, useApproveToken, useWalletBalances } from '../hooks/useContract';
-import { CURRENCIES, isNativeToken } from '../config/currencies';
+import { CURRENCIES, isNativeToken, FEE_CURRENCIES } from '../config/currencies';
 import { PONG_ESCROW_ADDRESS } from '../contracts/PongEscrow';
 import { isMiniPay } from '../utils/minipay';
 import { useLeaderboardSubscription, useBackendUrl } from '../hooks';
@@ -290,7 +290,7 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
     });
   };
 
-  const doStake = async (stakeAmount, currency) => {
+  const doStake = async (stakeAmount, currency, feeCurrencyAddr) => {
     const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
     setStakingInProgress(true);
@@ -308,7 +308,7 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
         await approveToken(currency.tokenAddress, PONG_ESCROW_ADDRESS, amountWei);
         // Approval succeeded — now stake
         setApprovalStep(false);
-        await stakeAsPlayer1(roomCode, currency, stakeAmount);
+        await stakeAsPlayer1(roomCode, currency, stakeAmount, feeCurrencyAddr);
       } catch (error) {
         console.error('Error during ERC-20 stake:', error);
         setStakingInProgress(false);
@@ -321,7 +321,7 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
 
     // Native CELO — single transaction
     try {
-      await stakeAsPlayer1(roomCode, currency, stakeAmount);
+      await stakeAsPlayer1(roomCode, currency, stakeAmount, feeCurrencyAddr);
     } catch (error) {
       console.error('Error initiating stake:', error);
       setStakingInProgress(false);
@@ -338,10 +338,27 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
       `<button type="button" class="stake-option" data-amount="${v}">${v} ${currency.symbol}</button>`
     ).join('');
 
+    const gasSelector = !inMiniPay ? `
+      <div style="margin-bottom: 15px; padding: 12px; background: rgba(53,208,127,0.08); border-radius: 8px; border: 1px solid rgba(53,208,127,0.2);">
+        <label style="display: block; margin-bottom: 6px; color: #888; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;">
+          Pay gas with
+        </label>
+        <select id="gas-token-select" style="
+          width: 100%; padding: 8px 12px; background: #1a1a1a; border: 1px solid #35D07F;
+          border-radius: 6px; color: #fff; font-size: 0.85rem; cursor: pointer;
+          font-family: inherit;
+        ">
+          <option value="">CELO (default)</option>
+          <option value="cUSD">cUSD</option>
+        </select>
+      </div>
+    ` : '';
+
     modal.innerHTML = `
       <form method="dialog">
         <h2>${currency.icon} Stake ${currency.symbol}</h2>
         <p style="margin-bottom: 20px; color: #888;">Choose how much to stake</p>
+        ${gasSelector}
         <div class="stake-options">${presets}</div>
         <div style="margin: 20px 0; padding: 15px; background: rgba(116,113,203,0.1); border-radius: 8px;">
           <label style="display: block; margin-bottom: 10px; color: #888; font-size: 0.9rem;">
@@ -368,12 +385,21 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
     const customInput = modal.querySelector('#custom-stake-input');
     const useCustomBtn = modal.querySelector('#use-custom-amount-btn');
     const errorDiv = modal.querySelector('#custom-amount-error');
+    const gasSelect = modal.querySelector('#gas-token-select');
 
     customInput.oninput = () => { customInput.style.borderColor = 'rgb(116,113,203)'; errorDiv.style.display = 'none'; };
 
+    const getFeeCurrency = () => {
+      if (!gasSelect) return null;
+      const val = gasSelect.value;
+      if (!val) return null;
+      const fc = FEE_CURRENCIES[val];
+      return fc?.adapter || fc?.address || null;
+    };
+
     const handleStake = (stakeAmount) => {
       modal.remove();
-      doStake(stakeAmount, currency);
+      doStake(stakeAmount, currency, getFeeCurrency());
     };
 
     useCustomBtn.onclick = () => {
