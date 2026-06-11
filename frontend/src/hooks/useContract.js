@@ -231,3 +231,114 @@ export function useWalletBalances(address) {
     USDT: usdtBalance != null ? parseFloat(formatUnits(usdtBalance, 6)).toFixed(2) : null,
   };
 }
+
+// ============ Engagement: Check-In ============
+
+export function useCheckIn() {
+  const { data: hash, writeContract, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const checkIn = async () => {
+    await writeContract({
+      address: PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
+      functionName: 'checkIn',
+    });
+  };
+
+  return { checkIn, hash, isPending, isConfirming, isSuccess, error };
+}
+
+// ============ Engagement: Daily Reward ============
+
+export function useClaimDailyReward() {
+  const { data: hash, writeContract, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const claimDailyReward = async () => {
+    await writeContract({
+      address: PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
+      functionName: 'claimDailyReward',
+    });
+  };
+
+  return { claimDailyReward, hash, isPending, isConfirming, isSuccess, error };
+}
+
+// ============ Engagement: Practice Mode ============
+
+export function usePracticeMode() {
+  const { data: hash, writeContract, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const practiceMode = async () => {
+    await writeContract({
+      address: PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
+      functionName: 'practiceMode',
+    });
+  };
+
+  return { practiceMode, hash, isPending, isConfirming, isSuccess, error };
+}
+
+// ============ Engagement: GG ============
+
+export function useGG() {
+  const { data: hash, writeContract, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const sendGG = async (roomCode) => {
+    await writeContract({
+      address: PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
+      functionName: 'gg', args: [roomCode],
+    });
+  };
+
+  return { sendGG, hash, isPending, isConfirming, isSuccess, error };
+}
+
+// ============ Engagement: Challenge ============
+
+export function useCreateChallenge() {
+  const { data: hash, writeContract, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const createChallenge = async (roomCode, tokenAddress, amountWei) => {
+    await writeContract({
+      address: PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
+      functionName: 'createChallenge',
+      args: [roomCode, tokenAddress || '0x0000000000000000000000000000000000000000', amountWei],
+    });
+  };
+
+  return { createChallenge, hash, isPending, isConfirming, isSuccess, error };
+}
+
+export function useAcceptChallenge() {
+  const { data: hash, writeContract, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const acceptChallenge = async (roomCode) => {
+    await writeContract({
+      address: PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
+      functionName: 'acceptChallenge', args: [roomCode],
+    });
+  };
+
+  return { acceptChallenge, hash, isPending, isConfirming, isSuccess, error };
+}
+
+// ============ Engagement: Report Match ============
+
+export function useReportMatch() {
+  const { data: hash, writeContract, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const reportMatch = async (roomCode, score1, score2) => {
+    await writeContract({
+      address: PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
+      functionName: 'reportMatch', args: [roomCode, score1, score2],
+    });
+  };
+
+  return { reportMatch, hash, isPending, isConfirming, isSuccess, error };
+}

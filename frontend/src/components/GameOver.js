@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAccount } from 'wagmi';
 import io from 'socket.io-client';
 import { STORAGE_KEY, BACKEND_URL, REMATCH_ROUTE } from '../constants';
-import { useClaimPrize } from '../hooks/useContract';
+import { useClaimPrize, useGG, useReportMatch } from '../hooks/useContract';
 import { BLOCK_EXPLORER_URL } from '../contracts/PongEscrow';
 import '../styles/GameOver.css';
 
@@ -41,6 +41,13 @@ const GameOver = () => {
   const [claiming, setClaiming] = useState(false);
   const [claimed, setClaimed] = useState(false);
   const [claimErrorMessage, setClaimErrorMessage] = useState(null);
+
+  // Engagement hooks
+  const { sendGG, isPending: isGGPending, isSuccess: isGGSuccess } = useGG();
+  const { reportMatch, isPending: isReportPending, isSuccess: isReportSuccess } = useReportMatch();
+  const [ggSent, setGGSent] = useState(false);
+  const [score1, setScore1] = useState(5);
+  const [score2, setScore2] = useState(0);
 
   const isStaked = result?.isStaked || false;
   const isWinner = result?.isWinner || false;
@@ -239,6 +246,57 @@ const GameOver = () => {
       {isStaked && !isWinner && (
         <div style={{ margin: '15px 0', padding: '15px', background: 'rgba(255,107,107,0.1)', borderRadius: 8, color: '#ff6b6b', fontSize: '0.85rem' }}>
           {result?.stakeAmount} {result?.stakeCurrency || 'CELO'} lost — better luck next time!
+        </div>
+      )}
+
+      {/* Engagement Buttons — GG + Report Score */}
+      {isConnected && result?.roomCode && (
+        <div style={{ margin: '16px 0', display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+          {!ggSent && !isGGSuccess && (
+            <button
+              onClick={() => { sendGG(result.roomCode).catch(() => {}); setGGSent(true); }}
+              disabled={isGGPending}
+              style={{
+                padding: '8px 18px', background: '#35D07F', color: '#000', border: 'none',
+                borderRadius: 6, cursor: isGGPending ? 'wait' : 'pointer',
+                fontFamily: '"Press Start 2P", monospace', fontSize: '0.65rem'
+              }}
+            >
+              {isGGSuccess ? 'GG Sent!' : isGGPending ? '...' : 'GG'}
+            </button>
+          )}
+          {isGGSuccess && (
+            <span style={{ padding: '8px 18px', color: '#35D07F', fontSize: '0.7rem', fontFamily: '"Press Start 2P", monospace' }}>
+              GG Sent!
+            </span>
+          )}
+
+          {!isReportSuccess ? (
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <input type="number" min="0" max="10" value={score1}
+                onChange={(e) => setScore1(parseInt(e.target.value) || 0)}
+                style={{ width: 40, padding: '6px', background: '#1a1a1a', border: '1px solid #35D07F', borderRadius: 4, color: '#fff', textAlign: 'center', fontFamily: 'inherit' }} />
+              <span style={{ color: '#888', fontSize: '0.7rem' }}>-</span>
+              <input type="number" min="0" max="10" value={score2}
+                onChange={(e) => setScore2(parseInt(e.target.value) || 0)}
+                style={{ width: 40, padding: '6px', background: '#1a1a1a', border: '1px solid #35D07F', borderRadius: 4, color: '#fff', textAlign: 'center', fontFamily: 'inherit' }} />
+              <button
+                onClick={() => reportMatch(result.roomCode, score1, score2).catch(() => {})}
+                disabled={isReportPending}
+                style={{
+                  padding: '6px 12px', background: '#7b3fe4', color: '#fff', border: 'none',
+                  borderRadius: 6, cursor: isReportPending ? 'wait' : 'pointer',
+                  fontFamily: '"Press Start 2P", monospace', fontSize: '0.6rem'
+                }}
+              >
+                {isReportPending ? '...' : 'Report'}
+              </button>
+            </div>
+          ) : (
+            <span style={{ padding: '8px 18px', color: '#7b3fe4', fontSize: '0.7rem', fontFamily: '"Press Start 2P", monospace' }}>
+              Score Reported!
+            </span>
+          )}
         </div>
       )}
 

@@ -6,7 +6,7 @@ import { parseUnits } from 'viem';
 import '../styles/Welcome.css';
 import { BACKEND_URL, SHOW_BACKEND_URL_BANNER } from '../constants';
 import soundManager from '../utils/soundManager';
-import { useStakeAsPlayer1, useApproveToken, useWalletBalances } from '../hooks/useContract';
+import { useStakeAsPlayer1, useApproveToken, useWalletBalances, useCheckIn, useClaimDailyReward, usePracticeMode } from '../hooks/useContract';
 import { CURRENCIES, isNativeToken, FEE_CURRENCIES } from '../config/currencies';
 import { PONG_ESCROW_ADDRESS, BLOCK_EXPLORER_URL } from '../contracts/PongEscrow';
 import { isMiniPay, supportsFeeAbstraction } from '../utils/minipay';
@@ -51,6 +51,11 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
   } = useApproveToken();
 
   const balances = useWalletBalances(isConnected ? address : null);
+
+  // Engagement hooks
+  const { checkIn, isPending: isCheckInPending, isSuccess: isCheckInSuccess } = useCheckIn();
+  const { claimDailyReward, isPending: isClaimRewardPending, isSuccess: isClaimRewardSuccess } = useClaimDailyReward();
+  const { practiceMode, isPending: isPracticePending, isSuccess: isPracticeSuccess } = usePracticeMode();
 
   useEffect(() => {
     if (!socket) {
@@ -557,6 +562,45 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
           </button>
         )}
       </div>
+
+      {/* Engagement Buttons */}
+      {isConnected && (
+        <div className="engagement-buttons" style={{ display: 'flex', gap: '8px', justifyContent: 'center', margin: '0 0 12px 0' }}>
+          <button
+            onClick={() => checkIn().catch(() => {})}
+            disabled={isCheckInPending}
+            style={{
+              padding: '6px 14px', background: '#35D07F', color: '#000', border: 'none',
+              borderRadius: 6, cursor: isCheckInPending ? 'wait' : 'pointer',
+              fontFamily: '"Press Start 2P", monospace', fontSize: '0.6rem'
+            }}
+          >
+            {isCheckInSuccess ? 'Checked In' : isCheckInPending ? '...' : 'Check-In'}
+          </button>
+          <button
+            onClick={() => claimDailyReward().catch(() => {})}
+            disabled={isClaimRewardPending}
+            style={{
+              padding: '6px 14px', background: '#fdd040', color: '#000', border: 'none',
+              borderRadius: 6, cursor: isClaimRewardPending ? 'wait' : 'pointer',
+              fontFamily: '"Press Start 2P", monospace', fontSize: '0.6rem'
+            }}
+          >
+            {isClaimRewardSuccess ? 'Claimed' : isClaimRewardPending ? '...' : 'Daily Reward'}
+          </button>
+          <button
+            onClick={() => practiceMode().catch(() => {})}
+            disabled={isPracticePending}
+            style={{
+              padding: '6px 14px', background: 'rgba(116,113,203,0.3)', color: '#fff', border: '1px solid rgb(116,113,203)',
+              borderRadius: 6, cursor: isPracticePending ? 'wait' : 'pointer',
+              fontFamily: '"Press Start 2P", monospace', fontSize: '0.6rem'
+            }}
+          >
+            {isPracticeSuccess ? '+1' : isPracticePending ? '...' : 'Practice'}
+          </button>
+        </div>
+      )}
 
       <div className={`title-container ${showTitle ? 'show' : ''}`}>
         <h1 className="game-title">PONG-IT</h1>
