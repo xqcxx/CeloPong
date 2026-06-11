@@ -6,7 +6,7 @@ import { parseUnits } from 'viem';
 import '../styles/Welcome.css';
 import { BACKEND_URL, SHOW_BACKEND_URL_BANNER } from '../constants';
 import soundManager from '../utils/soundManager';
-import { useStakeAsPlayer1, useApproveToken, useWalletBalances, useCheckIn, useClaimDailyReward, usePracticeMode } from '../hooks/useContract';
+import { useStakeAsPlayer1, useApproveToken, useWalletBalances, useCheckIn, useClaimDailyReward, usePracticeMode, useCreateChallenge, useAcceptChallenge } from '../hooks/useContract';
 import { CURRENCIES, isNativeToken, FEE_CURRENCIES } from '../config/currencies';
 import { PONG_ESCROW_ADDRESS, BLOCK_EXPLORER_URL } from '../contracts/PongEscrow';
 import { isMiniPay, supportsFeeAbstraction } from '../utils/minipay';
@@ -25,6 +25,7 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
   const [stakingConfirmed, setStakingConfirmed] = useState(false);
   const [confirmedTxHash, setConfirmedTxHash] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [makeChallengeAfterStake, setMakeChallengeAfterStake] = useState(false);
   const inMiniPay = isMiniPay();
   const titleRef = useRef(); // eslint-disable-line no-unused-vars
   const navigate = useNavigate();
@@ -56,6 +57,26 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
   const { checkIn, isPending: isCheckInPending, isSuccess: isCheckInSuccess } = useCheckIn();
   const { claimDailyReward, isPending: isClaimRewardPending, isSuccess: isClaimRewardSuccess } = useClaimDailyReward();
   const { practiceMode, isPending: isPracticePending, isSuccess: isPracticeSuccess } = usePracticeMode();
+
+  // Challenge hooks
+  const { createChallenge, isSuccess: isChallengeCreated } = useCreateChallenge();
+  const { acceptChallenge, isPending: isAcceptChallengePending } = useAcceptChallenge();
+  const [challenges, setChallenges] = useState([]);
+
+  // Fetch open challenges
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/games/challenges`)
+      .then(r => r.json())
+      .then(data => setChallenges(Array.isArray(data) ? data : []))
+      .catch(() => {});
+    const interval = setInterval(() => {
+      fetch(`${BACKEND_URL}/games/challenges`)
+        .then(r => r.json())
+        .then(data => setChallenges(Array.isArray(data) ? data : []))
+        .catch(() => {});
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [BACKEND_URL]);
 
   useEffect(() => {
     if (!socket) {
@@ -145,9 +166,20 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
           stakeCurrency: currencyKey,
           player1Address: address,
           player1TxHash: stakingTxHash,
-          status: 'waiting'
+          status: 'waiting',
+          challengeCreated: makeChallengeAfterStake
         })
       }).catch(err => console.error('Failed to create game record:', err));
+
+      // If user opted to make this a public challenge, call createChallenge on-chain
+      if (makeChallengeAfterStake && selectedCurrency) {
+        const challengeToken = selectedCurrency.tokenAddress || '0x0000000000000000000000000000000000000000';
+        const challengeAmount = isNativeToken(selectedCurrency.tokenAddress)
+          ? 0n
+          : parseUnits(selectedStakeAmount, selectedCurrency.decimals);
+        createChallenge(pendingRoomCode, challengeToken, challengeAmount).catch(() => {});
+      }
+      setMakeChallengeAfterStake(false);
 
       // Show confirmation for 2.5s before navigating
       setStakingConfirmed(true);
@@ -315,7 +347,7 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
     });
   };
 
-  const doStake = async (stakeAmount, currency, feeCurrencyAddr) => {
+  const doStake = async (stakeAmount, currency, feeCurrencyAddr, makeChallenge) => {
     const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
     setStakingInProgress(true);
@@ -396,6 +428,12 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
             Use Custom Amount
           </button>
         </div>
+        <div style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px; padding: 8px 0;">
+          <input type="checkbox" id="make-challenge-checkbox" style="width: 18px; height: 18px; accent-color: #35D07F; cursor: pointer;" />
+          <label for="make-challenge-checkbox" style="color: #aaa; font-size: 0.75rem; cursor: pointer;">
+            Make this a public challenge (visible in the challenge board)
+          </label>
+        </div>
         <div class="buttons" style="margin-top: 20px;">
           <button type="button" id="cancel-stake-btn">Cancel</button>
         </div>
@@ -411,6 +449,7 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
     const useCustomBtn = modal.querySelector('#use-custom-amount-btn');
     const errorDiv = modal.querySelector('#custom-amount-error');
     const gasSelect = modal.querySelector('#gas-token-select');
+    const makeChallengeCheckbox = modal.querySelector('#make-challenge-checkbox');
 
     customInput.oninput = () => { customInput.style.borderColor = 'rgb(116,113,203)'; errorDiv.style.display = 'none'; };
 
@@ -423,8 +462,10 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
     };
 
     const handleStake = (stakeAmount) => {
+      const makeChallenge = makeChallengeCheckbox ? makeChallengeCheckbox.checked : false;
       modal.remove();
-      doStake(stakeAmount, currency, getFeeCurrency());
+      setMakeChallengeAfterStake(makeChallenge);
+      doStake(stakeAmount, currency, getFeeCurrency(), makeChallenge);
     };
 
     useCustomBtn.onclick = () => {
@@ -768,6 +809,51 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
             )}
           </div>
         </div>
+
+        {/* Challenge Board */}
+        {challenges.length > 0 && (
+          <div className="active-games" style={{ marginTop: '20px' }}>
+            <h2>Challenge Board ({challenges.length})</h2>
+            <div className="games-list">
+              {challenges.map((c) => (
+                <div key={c.roomCode} className="game-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px' }}>
+                  <div className="game-info">
+                    <span className="game-code">Room: {c.roomCode}</span>
+                    {c.stakeAmount && (
+                      <span style={{ marginLeft: '12px', color: '#35D07F', fontSize: '0.85rem' }}>
+                        {c.stakeAmount} {c.stakeCurrency || 'CELO'}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await acceptChallenge(c.roomCode);
+                      } catch (err) { console.error('Accept failed:', err); }
+                      navigate('/game', {
+                        state: {
+                          gameMode: 'join',
+                          roomCode: c.roomCode,
+                          stakeAmount: c.stakeAmount,
+                          stakeCurrency: c.stakeCurrency || 'CELO',
+                          isStaked: true
+                        }
+                      });
+                    }}
+                    disabled={isAcceptChallengePending}
+                    style={{
+                      padding: '6px 14px', background: '#35D07F', color: '#000', border: 'none',
+                      borderRadius: 6, cursor: isAcceptChallengePending ? 'wait' : 'pointer',
+                      fontFamily: '"Press Start 2P", monospace', fontSize: '0.6rem'
+                    }}
+                  >
+                    {isAcceptChallengePending ? '...' : 'Accept'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {SHOW_BACKEND_URL_BANNER && (
           // Developer helper: quickly see which backend URL is active

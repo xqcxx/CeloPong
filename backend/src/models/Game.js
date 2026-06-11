@@ -74,6 +74,20 @@ const gameSchema = new mongoose.Schema({
     type: Date
   },
 
+  // Challenge board fields
+  challengeCreated: {
+    type: Boolean,
+    default: false
+  },
+  challengeAccepted: {
+    type: Boolean,
+    default: false
+  },
+  challengeAcceptor: {
+    type: String,
+    lowercase: true
+  },
+
   // Game status and timestamps
   status: {
     type: String,

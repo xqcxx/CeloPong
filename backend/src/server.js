@@ -626,6 +626,26 @@ app.get('/games/:roomCode', async (req, res) => {
   }
 });
 
+// Get open challenges for the challenge board
+app.get('/games/challenges', async (req, res) => {
+  try {
+    const challenges = await Game.find({
+      isStaked: true,
+      status: 'waiting',
+      challengeCreated: true,
+      challengeAccepted: false
+    })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean();
+
+    res.status(200).json(challenges);
+  } catch (error) {
+    console.error('Error fetching challenges:', error);
+    res.status(500).json({ error: 'Failed to fetch challenges' });
+  }
+});
+
 try {
   if (!ENABLE_SOCKET_HEADER_LOGS) {
     console.log('Socket header logging disabled (SOCKET_HEADER_LOGS!=true)');
