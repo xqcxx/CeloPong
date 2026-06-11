@@ -5,16 +5,7 @@
 import { TOKEN_ADDRESSES } from './env';
 
 export const CURRENCIES = {
-  CELO: {
-    key: 'CELO',
-    symbol: 'CELO',
-    name: 'CELO (Native)',
-    tokenAddress: null, // address(0) = native CELO
-    decimals: 18,
-    icon: '\u{1F7E1}',
-    presets: ['0.1', '0.5', '1', '5', '10'],
-    color: '#35D07F',
-  },
+  // Order matters — cUSD first for MiniPay users who primarily hold stablecoins
   cUSD: {
     key: 'cUSD',
     symbol: 'cUSD',
@@ -44,6 +35,16 @@ export const CURRENCIES = {
     icon: '\u{1F48E}',
     presets: ['1', '5', '10', '25', '50'],
     color: '#26A17B',
+  },
+  CELO: {
+    key: 'CELO',
+    symbol: 'CELO',
+    name: 'CELO (Native)',
+    tokenAddress: null,
+    decimals: 18,
+    icon: '\u{1F7E1}',
+    presets: ['0.1', '0.5', '1', '5', '10'],
+    color: '#35D07F',
   },
 };
 

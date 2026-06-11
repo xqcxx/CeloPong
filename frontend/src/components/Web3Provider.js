@@ -1,10 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { WagmiProvider, useConnect, useAccount } from 'wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useAppKit } from '@reown/appkit/react';
 import { wagmiAdapter } from '../config/wagmi';
 import { isMiniPay, connectMiniPay } from '../utils/minipay';
 
 const queryClient = new QueryClient();
+
+function MiniPayThemeSync() {
+  useEffect(() => {
+    if (isMiniPay()) {
+      document.documentElement.style.setProperty('--app-bg', '#f8fafc');
+      document.documentElement.style.setProperty('--app-text', '#1a1a2e');
+    }
+  }, []);
+  return null;
+}
 
 function MiniPayAutoConnect({ children }) {
   const { connect, connectors } = useConnect();
@@ -53,6 +64,7 @@ export function Web3Provider({ children }) {
     <WagmiProvider config={wagmiAdapter.wagmiConfig}>
       <QueryClientProvider client={queryClient}>
         <MiniPayAutoConnect>
+          <MiniPayThemeSync />
           {children}
         </MiniPayAutoConnect>
       </QueryClientProvider>
