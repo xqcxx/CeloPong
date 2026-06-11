@@ -188,6 +188,86 @@ export const PONG_ESCROW_ABI = [
     name: 'MatchRefunded',
     type: 'event',
   },
+  // Engagement — checkIn
+  {
+    inputs: [],
+    name: 'checkIn',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  // Engagement — claimDailyReward
+  {
+    inputs: [],
+    name: 'claimDailyReward',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  // Engagement — gg
+  {
+    inputs: [{ internalType: 'string', name: 'roomCode', type: 'string' }],
+    name: 'gg',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  // Engagement — practiceMode
+  {
+    inputs: [],
+    name: 'practiceMode',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  // Engagement — createChallenge
+  {
+    inputs: [
+      { internalType: 'string', name: 'roomCode', type: 'string' },
+      { internalType: 'address', name: 'token', type: 'address' },
+      { internalType: 'uint256', name: 'amount', type: 'uint256' },
+    ],
+    name: 'createChallenge',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  // Engagement — acceptChallenge
+  {
+    inputs: [{ internalType: 'string', name: 'roomCode', type: 'string' }],
+    name: 'acceptChallenge',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  // Engagement — reportMatch
+  {
+    inputs: [
+      { internalType: 'string', name: 'roomCode', type: 'string' },
+      { internalType: 'uint8', name: 'score1', type: 'uint8' },
+      { internalType: 'uint8', name: 'score2', type: 'uint8' },
+    ],
+    name: 'reportMatch',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  // Engagement view — lastCheckIn
+  {
+    inputs: [{ internalType: 'address', name: '', type: 'address' }],
+    name: 'lastCheckIn',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  // Engagement view — playerStreaks
+  {
+    inputs: [{ internalType: 'address', name: '', type: 'address' }],
+    name: 'playerStreaks',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
 ];
 
 // Match status enum
