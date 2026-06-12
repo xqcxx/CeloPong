@@ -1,0 +1,41 @@
+.App {
+  text-align: center;
+  background-color: #000;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  color: #fff;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Touch-friendly tap targets — MiniPay runs on mobile */
+@media (pointer: coarse) {
+  button, .stake-option, .mode-button, a[role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  select, input {
+    min-height: 44px;
+    font-size: 16px !important;  /* prevent iOS zoom on focus */
+  }
+
+  .transaction-modal {
+    max-width: 95vw;
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+
+  dialog, .stake-modal {
+    max-width: 95vw;
+  }
+
+  .stake-option {
+    padding: 14px 16px !important;
+  }
+}

@@ -1,0 +1,821 @@
+.welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 2rem 1rem;
+  background-color: #000;
+  color: white;
+  text-align: center;
+  overflow-y: auto;
+  max-height: 100vh;
+}
+
+.title-container {
+  position: relative;
+  margin: 2rem 0 4rem;
+  opacity: 0;
+  transform: translateY(-20px);
+  transition: all 0.5s ease-out;
+}
+
+.title-container.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.game-title {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 4rem;
+  color: rgb(116,113,203);
+  text-shadow: 0 0 10px rgb(116,113,203),
+               0 0 20px rgb(116,113,203),
+               0 0 30px rgb(116,113,203);
+  animation: pulse 2s infinite;
+  margin: 0;
+  padding: 2rem;
+  letter-spacing: 0.5rem;
+}
+
+@keyframes pulse {
+  0% {
+    text-shadow: 0 0 10px rgb(116,113,203),
+                 0 0 20px rgb(116,113,203),
+                 0 0 30px rgb(116,113,203);
+  }
+  50% {
+    text-shadow: 0 0 15px rgb(116,113,203),
+                 0 0 25px rgb(116,113,203),
+                 0 0 35px rgb(116,113,203),
+                 0 0 45px rgb(116,113,203);
+  }
+  100% {
+    text-shadow: 0 0 10px rgb(116,113,203),
+                 0 0 20px rgb(116,113,203),
+                 0 0 30px rgb(116,113,203);
+  }
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  width: 100%;
+  max-width: 800px;
+  margin-top: 2rem;
+  padding-bottom: 2rem;
+  overflow-y: visible;
+}
+
+button {
+  padding: 1rem 2rem;
+  font-size: 1.5rem;
+  background: rgb(116,113,203);
+  border: none;
+  border-radius: 4px;
+  color: #000;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: 'Press Start 2P', monospace;
+  text-transform: uppercase;
+}
+
+button:hover {
+  transform: scale(1.05);
+  background: rgba(116,113,203, 0.8);
+  box-shadow: 0 0 15px rgba(116,113,203, 0.2);
+}
+
+.instructions, .rankings {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 1.5rem;
+  border-radius: 8px;
+  border: 2px solid rgb(116,113,203);
+  box-shadow: 0 0 10px rgba(116,113,203, 0.2);
+}
+
+.backend-url-banner {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  color: #b7b7b7;
+  text-align: center;
+}
+
+.backend-url-banner span {
+  color: #4dfd8c;
+  font-weight: bold;
+}
+
+.backend-url-banner em {
+  font-style: normal;
+  color: #999;
+  margin-left: 0.25rem;
+}
+
+dialog {
+  padding: 2rem;
+  border: 2px solid rgb(116,113,203);
+  border-radius: 8px;
+  background: #000;
+  color: #fff;
+  font-family: 'Press Start 2P', monospace;
+  box-shadow: 0 0 15px rgba(116, 113, 203, 0.2);
+}
+
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+dialog input {
+  display: block;
+  margin: 1rem 0;
+  padding: 0.5rem;
+  width: 100%;
+  background: #111;
+  border: 1px solid rgb(116,113,203);
+  color: #fff;
+  border-radius: 4px;
+  font-family: 'Press Start 2P', monospace;
+}
+
+dialog .buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 2rem;
+}
+
+dialog button {
+  font-size: 1rem;
+  padding: 0.8rem 1.5rem;
+}
+
+h2 {
+  color: rgb(116,113,203);
+  margin-bottom: 1rem;
+  font-family: 'Press Start 2P', monospace;
+}
+
+p {
+  margin: 0.5rem 0;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+/* Reset and redefine rankings container - remove background and border */
+.rankings {
+  width: 100%;
+  max-width: 600px;
+  margin: 20px auto;
+  background-color: transparent !important;
+  padding: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Apply consistent fonts to all ranking elements */
+.rankings h2,
+.rank,
+.name,
+.rating,
+.stats,
+.no-rankings {
+  font-family: 'Press Start 2P', monospace !important; /* Ensure consistent pixelated font */
+}
+
+/* Rankings title - match How to Play heading */
+.rankings h2 {
+  color: rgb(116, 113, 203);
+  margin-bottom: 15px;
+  font-size: 1.2rem !important;
+  text-transform: uppercase;
+  letter-spacing: 1px !important;
+}
+
+/* Rankings list - the container for all player entries */
+.rankings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+/* Individual player box - ONE box per player, no border or background */
+.ranking-item {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  background-color: transparent !important; /* Remove background */
+  border: none !important; /* Remove border */
+  padding: 12px 15px !important;
+  width: 100% !important;
+  height: 45px !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+
+/* Rank number */
+.rank {
+  flex: 0 0 30px !important;
+  color: rgb(116, 113, 203) !important;
+  font-weight: normal !important; /* Match How to Play font weight */
+  font-size: 0.7rem !important; /* Match How to Play text size */
+  text-align: center !important;
+}
+
+/* Player name */
+.name {
+  flex: 1 !important;
+  text-align: left !important;
+  padding-left: 10px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  font-size: 0.7rem !important; /* Match How to Play text size */
+  letter-spacing: 0 !important; /* Match How to Play letter spacing */
+}
+
+/* Player rating */
+.rating {
+  flex: 0 0 70px !important;
+  text-align: right !important;
+  color: rgb(255, 215, 0) !important;
+  font-weight: normal !important; /* Match How to Play font weight */
+  font-size: 0.7rem !important; /* Match How to Play text size */
+}
+
+/* W/L stats */
+.stats {
+  flex: 0 0 80px !important;
+  text-align: right !important;
+  color: #bbb !important;
+  font-size: 0.7rem !important; /* Match How to Play text size */
+  white-space: nowrap !important;
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+/* Make sure the separator doesn't create a visual background */
+.ranking-item:not(:last-child) {
+  border-bottom: 1px solid rgba(116, 113, 203, 0.05) !important; /* Even more subtle separator */
+}
+
+/* Message when no players are ranked */
+.no-rankings {
+  padding: 20px;
+  text-align: center;
+  color: #888;
+  font-style: normal !important; /* Remove italic to match How to Play */
+  font-size: 0.7rem !important; /* Match How to Play text size */
+  border: none !important;
+  background-color: transparent !important;
+}
+
+:root, body, #root, .App {
+  min-height: 100vh;
+  height: auto;
+  overflow-y: auto;
+  background-color: #000;
+}
+
+html, body {
+  overflow: visible;
+  padding: 0;
+  margin: 0;
+  background-color: #000;
+}
+
+@media (max-width: 768px) {
+  .welcome {
+    padding: 1rem 0.5rem;
+    min-height: 100vh;
+  }
+
+  .game-title {
+    font-size: 2.5rem;
+    letter-spacing: 0.3rem;
+    padding: 1rem;
+  }
+
+  .menu {
+    gap: 1.5rem;
+    padding-bottom: 1rem;
+  }
+
+  .game-modes {
+    gap: 0.75rem;
+  }
+
+  .mode-button {
+    padding: 1rem 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  .button-icon {
+    font-size: 1.5rem;
+  }
+
+  .button-text {
+    font-size: 0.7rem;
+  }
+
+  .instructions, .rankings, .active-games {
+    padding: 1rem;
+  }
+
+  h2 {
+    font-size: 1rem;
+  }
+
+  p {
+    font-size: 0.7rem;
+  }
+
+  .rankings {
+    max-height: 300px;
+  }
+
+  .active-games {
+    max-height: 300px;
+  }
+
+  button {
+    font-size: 1rem;
+    padding: 0.8rem 1.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .game-title {
+    font-size: 2rem;
+    letter-spacing: 0.2rem;
+  }
+
+  .mode-button {
+    padding: 0.8rem 0.5rem;
+  }
+
+  .button-icon {
+    font-size: 1.2rem;
+  }
+
+  .button-text {
+    font-size: 0.6rem;
+  }
+
+  h2 {
+    font-size: 0.9rem;
+  }
+
+  p {
+    font-size: 0.6rem;
+  }
+}
+
+@media (max-width: 500px) {
+  .ranking-item {
+    padding: 10px !important;
+    height: 40px !important;
+  }
+  
+  .rank {
+    flex: 0 0 25px !important;
+    font-size: 0.8rem !important;
+  }
+  
+  .name {
+    font-size: 0.8rem !important;
+  }
+  
+  .rating {
+    flex: 0 0 60px !important;
+    font-size: 0.8rem !important;
+  }
+  
+  .stats {
+    flex: 0 0 70px !important;
+    font-size: 0.7rem !important;
+  }
+}
+
+/* Apply border to the welcome container with higher specificity */
+body .welcome,
+#root .welcome,
+.App .welcome {
+  border: 2px solid rgb(116, 113, 203);
+  box-sizing: border-box;
+}
+
+/* Add !important to override any conflicting styles */
+.welcome {
+  background-color: #000 !important;
+  border: 2px solid rgb(116, 113, 203) !important;
+}
+
+.game-modes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  width: 100%;
+  margin-bottom: 2rem;
+}
+
+.mode-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.5rem 1rem;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
+
+.button-icon {
+  font-size: 2rem;
+  filter: brightness(0);
+}
+
+.button-text {
+  font-size: 0.8rem;
+}
+
+.active-games {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 1.5rem;
+  border-radius: 8px;
+  border: 2px solid rgb(116,113,203);
+  width: 100%;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.active-games h2 {
+  color: rgb(116,113,203);
+  margin-bottom: 1rem;
+  font-size: 1.2rem;
+}
+
+.games-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.game-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: rgba(116,113,203, 0.1);
+  border: 1px solid rgb(116,113,203);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.game-item:hover {
+  background: rgba(116,113,203, 0.2);
+  transform: translateX(5px);
+}
+
+.game-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex: 1;
+}
+
+.game-players {
+  font-size: 0.9rem;
+  color: rgb(253,208,64);
+  font-family: 'Press Start 2P', monospace;
+}
+
+.game-code {
+  font-size: 0.7rem;
+  color: #bbb;
+  font-family: 'Press Start 2P', monospace;
+}
+
+.game-stats {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.spectator-count {
+  font-size: 0.8rem;
+  color: rgb(116,113,203);
+  font-family: 'Press Start 2P', monospace;
+}
+
+.game-status {
+  font-size: 1.2rem;
+}
+
+.no-games {
+  text-align: center;
+  padding: 2rem;
+  color: #666;
+  font-size: 0.8rem;
+  font-family: 'Press Start 2P', monospace;
+}
+
+.spectator-header {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 10;
+}
+
+.spectator-badge {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  background: rgba(116,113,203, 0.2);
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  border: 1px solid rgb(116,113,203);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.7rem;
+  color: rgb(253,208,64);
+}
+
+.spectator-count-badge {
+  color: rgb(116,113,203);
+}
+
+.leave-spectate-btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  background: rgba(255,0,0,0.7);
+  border: 1px solid red;
+  color: white;
+  cursor: pointer;
+  font-family: 'Press Start 2P', monospace;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+}
+
+.leave-spectate-btn:hover {
+  background: rgba(255,0,0,0.9);
+  transform: scale(1.05);
+}
+
+.room-info {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+}
+
+.room-code-display {
+  background: rgba(116,113,203, 0.2);
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  border: 1px solid rgb(116,113,203);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.8rem;
+  color: rgb(253,208,64);
+}
+
+@media (max-width: 768px) {
+  .game-modes {
+    grid-template-columns: 1fr;
+  }
+
+  .active-games {
+    max-height: 300px;
+  }
+
+  .game-players {
+    font-size: 0.7rem;
+  }
+
+  .spectator-badge {
+    font-size: 0.6rem;
+    padding: 0.4rem 0.8rem;
+  }
+}
+
+/* Wallet Connect Container */
+.wallet-connect-container {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.connect-wallet-btn {
+  background: linear-gradient(135deg, #7b3fe4 0%, #9d5ff5 100%);
+  color: white;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.9rem;
+  border: 2px solid rgb(116,113,203);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: 'Press Start 2P', monospace;
+  white-space: nowrap;
+}
+
+.connect-wallet-btn:hover {
+  background: linear-gradient(135deg, #6a2fcf 0%, #8c4ee4 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 0 20px rgba(123, 63, 228, 0.6);
+}
+
+.my-wins-btn {
+  background: rgba(253, 208, 64, 0.2);
+  color: rgb(253, 208, 64);
+  padding: 0.75rem 1.5rem;
+  font-size: 0.9rem;
+  border: 2px solid rgb(253, 208, 64);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: 'Press Start 2P', monospace;
+  white-space: nowrap;
+}
+
+.my-wins-btn:hover {
+  background: rgba(253, 208, 64, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 0 20px rgba(253, 208, 64, 0.5);
+}
+
+.game-history-btn {
+  background: rgba(116, 113, 203, 0.2);
+  color: rgb(116, 113, 203);
+  padding: 0.75rem 1.5rem;
+  font-size: 0.9rem;
+  border: 2px solid rgb(116, 113, 203);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: 'Press Start 2P', monospace;
+  white-space: nowrap;
+}
+
+.game-history-btn:hover {
+  background: rgba(116, 113, 203, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 0 20px rgba(116, 113, 203, 0.5);
+}
+
+/* Staked Match Button - Match other buttons */
+.mode-button.staked-match {
+  background: rgb(116,113,203);
+  position: relative;
+  overflow: hidden;
+}
+
+.mode-button.staked-match:not(:disabled):hover {
+  background: rgba(116,113,203, 0.8);
+  box-shadow: 0 0 15px rgba(116,113,203, 0.2);
+}
+
+.mode-button.staked-match:disabled {
+  background: rgba(116,113,203, 0.3);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.mode-button.staked-match .button-icon {
+  filter: brightness(0);
+}
+
+/* Stake Modal */
+dialog.stake-modal {
+  min-width: 400px;
+  max-width: 500px;
+}
+
+dialog.stake-modal h2 {
+  text-align: center;
+  margin-bottom: 0.5rem;
+}
+
+.stake-options {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.stake-option {
+  padding: 1.5rem;
+  font-size: 1.2rem;
+  background: rgba(116,113,203, 0.2);
+  border: 2px solid rgb(116,113,203);
+  color: rgb(253,208,64);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: 'Press Start 2P', monospace;
+  border-radius: 8px;
+}
+
+.stake-option:hover {
+  background: rgba(116,113,203, 0.4);
+  transform: scale(1.05);
+  box-shadow: 0 0 20px rgba(116,113,203, 0.5);
+  border-color: rgb(253,208,64);
+}
+
+/* Transaction Overlay */
+.transaction-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(5px);
+}
+
+.transaction-modal {
+  background: #000;
+  border: 2px solid rgb(116,113,203);
+  border-radius: 12px;
+  padding: 3rem;
+  text-align: center;
+  box-shadow: 0 0 30px rgba(116,113,203, 0.5);
+  max-width: 400px;
+}
+
+.transaction-modal h3 {
+  color: rgb(253,208,64);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 1rem;
+  margin-bottom: 2rem;
+  line-height: 1.5;
+}
+
+.transaction-modal p {
+  color: #bbb;
+  font-size: 0.7rem;
+  margin-top: 1.5rem;
+  line-height: 1.5;
+}
+
+/* Transaction Spinner */
+.transaction-spinner {
+  width: 60px;
+  height: 60px;
+  margin: 0 auto;
+  border: 4px solid rgba(116,113,203, 0.2);
+  border-top: 4px solid rgb(116,113,203);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Mobile Responsive */
+@media (max-width: 600px) {
+  .wallet-connect-container {
+    top: 10px;
+    right: 10px;
+  }
+
+  dialog.stake-modal {
+    min-width: 90%;
+    max-width: 90%;
+  }
+
+  .stake-options {
+    grid-template-columns: 1fr;
+  }
+
+  .stake-option {
+    font-size: 1rem;
+    padding: 1.2rem;
+  }
+
+  .transaction-modal {
+    padding: 2rem;
+    max-width: 90%;
+  }
+
+  .transaction-modal h3 {
+    font-size: 0.8rem;
+  }
+} 

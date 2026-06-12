@@ -1,0 +1,767 @@
+.game-container {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  cursor: default;
+  background-color: #000;
+  transition: cursor 0.3s ease;
+}
+
+.game-container.cursor-hidden {
+  cursor: none;
+}
+
+.score-board {
+  display: flex;
+  justify-content: center;
+  gap: 4rem;
+  font-size: 3rem;
+  margin: 1rem;
+  font-family: 'Press Start 2P', monospace;
+  color: rgb(116,113,203);
+}
+
+canvas {
+  border: 2px solid rgb(116,113,203);
+  background-color: #000;
+  box-shadow: 0 0 20px rgba(116,113,203, 0.2);
+  touch-action: none;
+  user-select: none;
+}
+
+dialog {
+  padding: 2rem;
+  border: 2px solid rgb(116,113,203);
+  border-radius: 8px;
+  background: #000;
+  color: #fff;
+  font-family: 'Press Start 2P', monospace;
+}
+
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+dialog input {
+  display: block;
+  margin: 1rem 0;
+  padding: 0.5rem;
+  width: 100%;
+  background: #111;
+  border: 1px solid rgb(116,113,203);
+  color: #fff;
+  border-radius: 4px;
+  font-family: 'Press Start 2P', monospace;
+}
+
+dialog .buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 2rem;
+}
+
+dialog button {
+  font-size: 1rem;
+  padding: 0.8rem 1.5rem;
+  font-family: 'Press Start 2P', monospace;
+  background: rgb(116,113,203);
+  border: none;
+  border-radius: 4px;
+  color: #000;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+dialog button:hover {
+  transform: scale(1.05);
+  background: rgba(116,113,203, 0.8);
+  box-shadow: 0 0 15px rgb(116,113,203);
+}
+
+.player-names {
+  position: absolute;
+  top: 20px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 20%;
+  font-family: 'Press Start 2P', monospace;
+  color: rgb(116,113,203);
+  font-size: 16px;
+}
+
+.player-names span {
+  text-shadow: 0 0 5px rgb(116,113,203);
+}
+
+/* Music controls styling */
+.music-controls {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 1rem;
+  z-index: 10;
+}
+
+.music-button {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.7rem;
+  padding: 0.5rem 1rem;
+  background: rgba(116,113,203, 0.7);
+  color: #000;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.music-button:hover {
+  transform: scale(1.05);
+  background: rgb(116,113,203);
+  box-shadow: 0 0 10px rgba(116,113,203, 0.5);
+}
+
+@media (max-width: 768px) {
+  .game-container {
+    width: 100%;
+    height: 100vh;
+    touch-action: none;
+    overflow: hidden;
+  }
+
+  canvas {
+    width: 95vw !important;
+    height: 65vh !important;
+    max-width: 95vw;
+    max-height: 65vh;
+    touch-action: none;
+  }
+
+  .player-names {
+    font-size: 0.6rem;
+    padding: 0 5%;
+    top: 60px;
+  }
+
+  .score-board {
+    font-size: 1.5rem;
+    gap: 2rem;
+    margin: 0.5rem;
+  }
+
+  .music-controls {
+    bottom: 10px;
+  }
+
+  .music-button {
+    font-size: 0.6rem;
+    padding: 0.4rem 0.8rem;
+  }
+
+  .back-button {
+    font-size: 0.6rem;
+    padding: 0.4rem 0.8rem;
+    top: 5px;
+    left: 5px;
+  }
+
+  .game-controls {
+    top: 45px;
+    gap: 0.5rem;
+  }
+
+  .control-btn {
+    font-size: 0.6rem;
+    padding: 0.4rem 0.8rem;
+  }
+
+  .room-info {
+    top: 90px;
+  }
+
+  .room-code-display {
+    font-size: 0.6rem;
+    padding: 0.4rem 0.8rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .game-container {
+    height: 100dvh;
+  }
+
+  canvas {
+    width: 98vw !important;
+    height: 60vh !important;
+  }
+
+  .player-names {
+    font-size: 0.5rem;
+    top: 55px;
+  }
+
+  .score-board {
+    font-size: 1.2rem;
+    gap: 1.5rem;
+  }
+
+  .back-button {
+    font-size: 0.5rem;
+    padding: 0.3rem 0.6rem;
+  }
+
+  .game-controls {
+    flex-direction: column;
+    gap: 0.3rem;
+    top: 40px;
+  }
+
+  .control-btn {
+    font-size: 0.5rem;
+    padding: 0.3rem 0.6rem;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 600px) {
+  canvas {
+    height: 70vh !important;
+  }
+
+  .player-names {
+    top: 40px;
+  }
+
+  .game-controls {
+    top: 35px;
+  }
+}
+
+/* This helps prevent unwanted scrolling or zooming while playing */
+body.playing {
+  overflow: hidden;
+  position: fixed;
+  width: 100%;
+  height: 100%;
+}
+
+/* Endgame screen styling to match welcome page */
+.endgame-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  background-color: rgba(0, 0, 0, 0.85);
+  z-index: 100;
+  padding: 2rem;
+  box-sizing: border-box;
+}
+
+/* Main message styling to match How to Play and Top Players headings */
+.endgame-message {
+  font-family: 'Press Start 2P', monospace !important;
+  font-size: 1.2rem !important; /* Match the heading size */
+  color: rgb(116, 113, 203) !important; /* Match the purple color */
+  text-align: center;
+  margin-bottom: 2rem;
+  text-transform: uppercase;
+  letter-spacing: 1px !important;
+  text-shadow: none !important; /* Remove text shadow to match headings */
+  font-weight: normal !important;
+}
+
+/* Win message specific styling - keep the message format but update colors */
+.win-message {
+  font-family: 'Press Start 2P', monospace !important;
+  font-size: 1.2rem !important;
+  color: rgb(116, 113, 203) !important; /* Use the same purple color */
+  text-transform: uppercase;
+  letter-spacing: 1px !important;
+  text-shadow: none !important;
+}
+
+/* Lose message specific styling - keep the message format but update colors */
+.lose-message {
+  font-family: 'Press Start 2P', monospace !important;
+  font-size: 1.2rem !important;
+  color: rgb(116, 113, 203) !important; /* Use the same purple color */
+  text-transform: uppercase;
+  letter-spacing: 1px !important;
+  text-shadow: none !important;
+}
+
+/* Make sure any additional heading elements match */
+.endgame-container h1,
+.endgame-container h2,
+.endgame-container h3 {
+  font-family: 'Press Start 2P', monospace !important;
+  font-size: 1.2rem !important;
+  color: rgb(116, 113, 203) !important;
+  text-transform: uppercase;
+  letter-spacing: 1px !important;
+  text-shadow: none !important;
+  font-weight: normal !important;
+}
+
+/* Stats section */
+.endgame-stats {
+  font-family: 'Press Start 2P', monospace !important;
+  font-size: 0.8rem !important;
+  color: white;
+  margin-bottom: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  text-align: center;
+}
+
+/* Individual stat items */
+.stat-item {
+  font-family: 'Press Start 2P', monospace !important;
+  font-size: 0.7rem !important;
+  line-height: 1.5;
+}
+
+/* Button styling to match welcome page */
+.endgame-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+  max-width: 300px;
+}
+
+.endgame-button {
+  font-family: 'Press Start 2P', monospace !important;
+  font-size: 0.8rem !important;
+  padding: 1rem !important;
+  background: rgba(116, 113, 203, 0.5) !important;
+  color: white !important;
+  border: none !important;
+  border-radius: 0 !important; /* Remove rounded corners to match welcome page */
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.endgame-button:hover {
+  background: rgba(116, 113, 203, 0.8) !important;
+  transform: scale(1.05);
+  box-shadow: 0 0 15px rgba(116, 113, 203, 0.3);
+}
+
+/* Final score display */
+.final-score {
+  font-family: 'Press Start 2P', monospace !important;
+  font-size: 1.2rem !important;
+  color: rgb(255, 215, 0) !important;
+  margin: 1rem 0;
+}
+
+/* Player name display */
+.player-name {
+  font-family: 'Press Start 2P', monospace !important;
+  font-size: 0.9rem !important;
+}
+
+/* Any additional text on endgame screens */
+.endgame-container p, 
+.endgame-container h3, 
+.endgame-container span {
+  font-family: 'Press Start 2P', monospace !important;
+  font-size: 0.7rem !important;
+  line-height: 1.6;
+}
+
+/* Target all possible containers and elements within the endgame screen */
+.endgame-container,
+.endgame-container * {
+  text-align: center !important;
+}
+
+/* Super specific targeting for any result elements */
+.endgame-container .result,
+.endgame-container .stats,
+.endgame-container .stat-item,
+.endgame-container .final-score,
+.endgame-container .player-result,
+.endgame-container .game-stats,
+.endgame-container .game-result,
+.endgame-container p,
+.endgame-container span,
+.endgame-container div {
+  display: block !important;
+  width: 100% !important;
+  text-align: center !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+/* Target specific endgame stats container */
+.endgame-stats {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  max-width: 400px !important; /* Limit width for better readability */
+  margin: 0 auto 2rem auto !important;
+}
+
+/* Ensure each stat item is centered */
+.stat-item {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  text-align: center !important;
+}
+
+/* Force any table elements to center */
+.endgame-container table,
+.endgame-container tr,
+.endgame-container td {
+  margin-left: auto !important;
+  margin-right: auto !important;
+  text-align: center !important;
+}
+
+/* If there are any flex containers with items, ensure they're centered */
+.endgame-container [class*="flex"],
+.endgame-container [style*="display: flex"] {
+  justify-content: center !important;
+  align-items: center !important;
+  text-align: center !important;
+}
+
+/* Ultimate centering solution with maximum specificity */
+body .endgame-container,
+#root .endgame-container,
+.App .endgame-container {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+}
+
+/* Target every single direct child of endgame container */
+body .endgame-container > *,
+#root .endgame-container > *,
+.App .endgame-container > * {
+  width: 100% !important;
+  max-width: 500px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  text-align: center !important;
+  display: block !important;
+}
+
+/* Override any specific alignment issues */
+.endgame-stats,
+.stat-item,
+.endgame-message,
+.win-message,
+.lose-message,
+.final-score {
+  display: block !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  text-align: center !important;
+  width: 100% !important;
+  max-width: 500px !important;
+}
+
+/* Eliminate any justification or text-align that could be overriding */
+[style*="text-align"],
+[style*="justify-content"],
+[style*="align-items"],
+[style*="margin-left"],
+[style*="margin-right"] {
+  text-align: center !important;
+  justify-content: center !important;
+  align-items: center !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+/* Target the correct welcome class */
+.welcome {
+  display: block !important;
+  height: auto !important;
+  min-height: 100vh !important;
+  padding: 2rem !important;
+  margin: 0 !important;
+  position: static !important;
+  transform: none !important;
+  top: 0 !important;
+  left: 0 !important;
+  overflow-y: auto !important;
+  background-color: #000 !important;
+}
+
+/* Target the logo in the welcome page */
+.welcome .logo {
+  display: block !important;
+  position: static !important;
+  margin: 0 auto 2rem auto !important;
+  padding: 0 !important;
+  max-height: 100px !important;
+  width: auto !important;
+  transform: none !important;
+  top: auto !important;
+  left: auto !important;
+}
+
+/* Reset all margins and transforms for welcome page elements */
+.welcome *,
+.welcome > * {
+  margin-top: 0 !important;
+  transform: none !important;
+  position: static !important;
+}
+
+/* First child positioning - force it to the top */
+.welcome > *:first-child {
+  margin-top: 0 !important;
+}
+
+/* Content containers in welcome page */
+.welcome > div,
+.welcome > section {
+  margin-bottom: 2rem;
+  width: 100%;
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Top player list adjustments */
+.welcome-container .top-players {
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto 2rem;
+}
+
+/* Remove any flex or positioning that might interfere */
+.welcome-container div,
+.welcome-container section {
+  position: static;
+}
+
+/* Game controls styling */
+.game-controls {
+  position: absolute;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 1rem;
+  z-index: 10;
+}
+
+.control-btn {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.7rem;
+  padding: 0.5rem 1rem;
+  background: rgba(116, 113, 203, 0.7);
+  color: #000;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.control-btn:hover:not(:disabled) {
+  transform: scale(1.05);
+  background: rgb(116, 113, 203);
+  box-shadow: 0 0 10px rgba(116, 113, 203, 0.5);
+}
+
+.control-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.forfeit-btn {
+  background: rgba(255, 99, 71, 0.7);
+  color: #fff;
+}
+
+.forfeit-btn:hover:not(:disabled) {
+  background: rgba(255, 99, 71, 0.9);
+  box-shadow: 0 0 10px rgba(255, 99, 71, 0.5);
+}
+
+/* Pause overlay */
+.pause-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.pause-message {
+  font-family: 'Press Start 2P', monospace;
+  text-align: center;
+  color: rgb(116, 113, 203);
+  padding: 2rem;
+  background: rgba(0, 0, 0, 0.9);
+  border: 2px solid rgb(116, 113, 203);
+  border-radius: 8px;
+}
+
+.pause-message h2 {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  text-shadow: 0 0 10px rgb(116, 113, 203);
+}
+
+.pause-message p {
+  font-size: 0.8rem;
+  margin: 0.5rem 0;
+  color: #fff;
+}
+
+/* Rematch overlay */
+.rematch-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.rematch-modal {
+  font-family: 'Press Start 2P', monospace;
+  text-align: center;
+  color: #fff;
+  padding: 2rem;
+  background: #000;
+  border: 3px solid rgb(116, 113, 203);
+  border-radius: 8px;
+  max-width: 400px;
+}
+
+.rematch-modal h2 {
+  font-size: 1.2rem;
+  margin-bottom: 1rem;
+  color: rgb(116, 113, 203);
+  text-shadow: 0 0 10px rgb(116, 113, 203);
+}
+
+.rematch-modal p {
+  font-size: 0.8rem;
+  margin-bottom: 1.5rem;
+}
+
+.rematch-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.accept-btn,
+.decline-btn {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.7rem;
+  padding: 0.8rem 1.5rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.accept-btn {
+  background: rgb(116, 113, 203);
+  color: #000;
+}
+
+.accept-btn:hover {
+  transform: scale(1.05);
+  background: rgba(116, 113, 203, 0.8);
+  box-shadow: 0 0 15px rgb(116, 113, 203);
+}
+
+.decline-btn {
+  background: rgba(255, 99, 71, 0.8);
+  color: #fff;
+}
+
+.decline-btn:hover {
+  transform: scale(1.05);
+  background: rgba(255, 99, 71, 1);
+  box-shadow: 0 0 15px rgba(255, 99, 71, 0.5);
+}
+
+/* Room code display */
+.room-info {
+  position: absolute;
+  top: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+}
+
+.room-code-display {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.8rem;
+  color: rgb(253, 208, 64);
+  padding: 0.5rem 1rem;
+  background: rgba(0, 0, 0, 0.7);
+  border: 2px solid rgb(253, 208, 64);
+  border-radius: 4px;
+  text-shadow: 0 0 10px rgb(253, 208, 64);
+}
+
+/* Back button */
+.back-button {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 100;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.7rem;
+  padding: 0.5rem 1rem;
+  background: rgba(116, 113, 203, 0.7);
+  color: #fff;
+  border: 2px solid rgb(116, 113, 203);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.back-button:hover {
+  background: rgb(116, 113, 203);
+  transform: scale(1.05);
+  box-shadow: 0 0 15px rgba(116, 113, 203, 0.5);
+}
+
+.back-button:active {
+  transform: scale(0.95);
+}

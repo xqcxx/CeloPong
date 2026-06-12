@@ -1,0 +1,142 @@
+.game-over {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  height: 100vh;
+  padding: 20px;
+  background-color: #000;
+  color: #fff;
+}
+
+/* Enhanced retro game style for the heading */
+.game-over h1 {
+  font-size: 2.5rem;
+  font-weight: bold;
+  margin-bottom: 1.5rem;
+  color: #fff;
+  text-shadow: 0 0 10px #7471cb, 0 0 20px #7471cb, 0 0 30px #7471cb;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  font-family: 'Press Start 2P', 'Courier New', monospace;
+}
+
+.stats, .rankings {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2rem;
+  border-radius: 8px;
+  width: 100%;
+  max-width: 600px;
+  text-align: center;
+}
+
+.stats {
+  margin: 20px 0;
+  text-align: center;
+}
+
+.stats p {
+  margin: 10px 0;
+  text-align: center;
+}
+
+.ranking-item {
+  display: grid;
+  grid-template-columns: 50px 1fr 100px;
+  padding: 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.actions {
+  display: flex;
+  gap: 1rem;
+}
+
+/* Button group styling */
+.button-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 2rem;
+  width: 100%;
+  max-width: 300px;
+}
+
+/* Rematch request section */
+.rematch-request {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: rgba(116, 113, 203, 0.2);
+  border: 2px solid rgb(116, 113, 203);
+  border-radius: 8px;
+}
+
+.rematch-request p {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.9rem;
+  color: rgb(116, 113, 203);
+  margin-bottom: 1rem;
+}
+
+/* Button styling */
+.game-over button {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.8rem;
+  padding: 1rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.rematch-btn {
+  background: rgb(116, 113, 203);
+  color: #000;
+}
+
+.rematch-btn:hover:not(:disabled) {
+  background: rgba(116, 113, 203, 0.8);
+  transform: scale(1.05);
+  box-shadow: 0 0 15px rgb(116, 113, 203);
+}
+
+.rematch-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.home-btn {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.home-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(1.05);
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
+}
+
+.accept-btn {
+  background: rgb(116, 113, 203);
+  color: #000;
+}
+
+.accept-btn:hover {
+  background: rgba(116, 113, 203, 0.8);
+  transform: scale(1.05);
+  box-shadow: 0 0 15px rgb(116, 113, 203);
+}
+
+.decline-btn {
+  background: rgba(255, 99, 71, 0.8);
+  color: #fff;
+}
+
+.decline-btn:hover {
+  background: rgba(255, 99, 71, 1);
+  transform: scale(1.05);
+  box-shadow: 0 0 15px rgba(255, 99, 71, 0.5);
+} 
