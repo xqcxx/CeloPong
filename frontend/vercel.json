@@ -1,0 +1,6 @@
+{
+  "buildCommand": "CI=false npx react-app-rewired build",
+  "outputDirectory": "build",
+  "installCommand": "pnpm install --no-frozen-lockfile",
+  "framework": "create-react-app"
+}
