@@ -1,6 +1,6 @@
 'use client';
 import React, { useState } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, BrowserRouter } from 'react-router-dom';
 import Welcome from '@/components/Welcome';
 import MultiplayerGame from '@/components/MultiplayerGame';
 import SpectatorView from '@/components/SpectatorView';
@@ -37,7 +37,8 @@ export default function App() {
 
   return (
     <div className="App">
-      <Routes>
+      <BrowserRouter>
+        <Routes>
         <Route path="/" element={<Welcome setGameState={setGameState} savedUsername={username} onUsernameSet={handleUsernameSet} />} />
         <Route path="/game" element={<MultiplayerGame username={username} />} />
         <Route path="/spectate" element={<SpectatorView />} />
@@ -45,6 +46,7 @@ export default function App() {
         <Route path="/my-wins" element={<MyWins />} />
         <Route path="/game-history" element={<GameHistory savedUsername={username} />} />
       </Routes>
+      </BrowserRouter>
     </div>
   );
 }
