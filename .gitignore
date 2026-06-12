@@ -4,5 +4,6 @@ node_modules/
 package-lock.json
 build/
 
-# Auto-player state (wallet→name mapping)
-scripts/auto-player/names.json
+# Auto-player (local only)
+scripts/
+.vercel
