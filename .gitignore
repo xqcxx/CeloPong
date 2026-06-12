@@ -1,5 +1,6 @@
 node_modules/
 .env
+!.env.example
 .gitmodules
 package-lock.json
 build/
