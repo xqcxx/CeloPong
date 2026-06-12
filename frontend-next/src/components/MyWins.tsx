@@ -57,8 +57,8 @@ const MyWins = () => {
 
       const params = new URLSearchParams({
         address,
-        limit: pagination.limit,
-        offset: pagination.offset
+        limit: String(pagination.limit),
+        offset: String(pagination.offset)
       });
 
       const response = await fetch(`${BACKEND_URL}/games/my-wins?${params}`);

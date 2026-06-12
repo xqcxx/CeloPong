@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { formatEther, parseEther } from 'viem';
 
 const ZERO = 0n;

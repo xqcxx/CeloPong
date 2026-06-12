@@ -26,7 +26,7 @@ export const SHOW_BACKEND_URL_BANNER =
   process.env.NODE_ENV !== 'production' &&
   readBooleanEnv(process.env.NEXT_PUBLIC_SHOW_BACKEND_URL_BANNER, true);
 
-export const PRIZE_MULTIPLIER = 2;
+export const PRIZE_MULTIPLIER = 2n;
 
 // Celo chain IDs
 export const CELO_MAINNET_CHAIN_ID = 42220;

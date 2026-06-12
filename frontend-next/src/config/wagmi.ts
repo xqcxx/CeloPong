@@ -14,7 +14,6 @@ const metadata = {
 export const wagmiAdapter = new WagmiAdapter({
   networks: [celoSepolia, celo],
   projectId,
-  defaultNetwork: celoSepolia,
 });
 
 createAppKit({

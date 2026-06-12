@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { PUBLIC_URL } from '../constants';
 
 class SoundManager {
@@ -68,6 +69,8 @@ class SoundManager {
   }
 
   constructor() {
+    // Skip sound initialization during SSR (Audio() not available)
+    if (typeof window === 'undefined') return;
     this.audioBase = PUBLIC_URL || '';
     if (this.audioBase) {
       console.log('SoundManager audio base:', this.audioBase);

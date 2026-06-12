@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Web3Provider } from '@/components/Web3Provider';
 
@@ -7,7 +7,6 @@ export const metadata: Metadata = {
   description: 'Stake cUSD. Play Pong. Win 2x back. Built for MiniPay on Celo.',
   manifest: '/manifest.json',
   icons: { icon: '/icons/icon-192.png', apple: '/icons/icon-192.png' },
-  themeColor: '#7b3fe4',
   openGraph: {
     title: 'PONG-IT',
     description: 'Stake crypto. Play Pong. Win the pot. On Celo.',
@@ -20,6 +19,10 @@ export const metadata: Metadata = {
     description: 'Stake crypto. Play Pong. Win the pot. On Celo.',
     images: ['https://pong-it.app/icons/icon-512.png'],
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#7b3fe4',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

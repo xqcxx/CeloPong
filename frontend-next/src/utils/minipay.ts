@@ -20,7 +20,7 @@ export async function connectMiniPay() {
   if (typeof window === 'undefined' || !window.ethereum) {
     return null;
   }
-  const accounts = await window.ethereum.request({
+  const accounts = await (window.ethereum as any).request({
     method: 'eth_requestAccounts',
   });
   return accounts[0] || null;

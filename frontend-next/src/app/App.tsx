@@ -41,7 +41,7 @@ export default function App() {
         <Route path="/" element={<Welcome setGameState={setGameState} savedUsername={username} onUsernameSet={handleUsernameSet} />} />
         <Route path="/game" element={<MultiplayerGame username={username} />} />
         <Route path="/spectate" element={<SpectatorView />} />
-        <Route path="/game-over" element={<GameOver savedUsername={username} onPlayAgain={() => {}} />} />
+        <Route path="/game-over" element={<GameOver />} />
         <Route path="/my-wins" element={<MyWins />} />
         <Route path="/game-history" element={<GameHistory savedUsername={username} />} />
       </Routes>

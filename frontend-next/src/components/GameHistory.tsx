@@ -47,8 +47,8 @@ const GameHistory = ({ savedUsername }) => {
 
       const params = new URLSearchParams({
         filter: activeFilter,
-        limit: pagination.limit,
-        offset: pagination.offset
+        limit: String(pagination.limit),
+        offset: String(pagination.offset)
       });
 
       if (stakedFilter !== null) {

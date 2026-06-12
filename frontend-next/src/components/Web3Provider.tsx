@@ -27,9 +27,9 @@ function MiniPayAutoConnect({ children }) {
     if (!isMiniPay() || isConnected) return;
     const injected = connectors.find(c => c.type === 'injected');
     if (injected) {
-      connect({ connector: injected }).catch(() => setConnectFailed(true));
+      connect({ connector: injected });
     } else {
-      connectMiniPay().then(() => {}).catch(() => setConnectFailed(true));
+      connectMiniPay().catch(() => setConnectFailed(true));
     }
   }, [connectors, isConnected, connect]);
 
