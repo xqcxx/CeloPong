@@ -6,6 +6,7 @@ const { createServer } = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const { ethers } = require('ethers');
 const GameHandlers = require('./gameHandlers');
 const MultiplayerHandler = require('./multiplayerHandler');
 const Player = require('./models/Player');
@@ -49,6 +50,18 @@ function maskAddress(address) {
 function truncate(value, max = 50) {
   if (typeof value !== 'string') return value;
   return value.length > max ? `${value.slice(0, max)}…` : value;
+}
+
+function usernameRegistrationMessage(walletAddress, username) {
+  return [
+    'PONG-IT username registration',
+    `Wallet: ${walletAddress.toLowerCase()}`,
+    `Username: ${username}`
+  ].join('\n');
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function logSocketEvent(label, payload) {
@@ -173,6 +186,100 @@ app.get('/players', async (req, res) => {
   } catch (error) {
     console.error('Error fetching players:', error);
     res.status(500).json({ error: 'Failed to fetch players' });
+  }
+});
+
+app.get('/players/wallet/:walletAddress', async (req, res) => {
+  try {
+    const { walletAddress } = req.params;
+    if (!ethers.isAddress(walletAddress)) {
+      return res.status(400).json({ error: 'Valid wallet address is required' });
+    }
+
+    const player = await Player.findOne({
+      walletAddress: walletAddress.toLowerCase()
+    }).lean();
+
+    if (!player) {
+      return res.status(404).json({ error: 'No username registered for this wallet' });
+    }
+
+    res.status(200).json(player);
+  } catch (error) {
+    console.error('Error fetching wallet username:', error);
+    res.status(500).json({ error: 'Failed to fetch wallet username' });
+  }
+});
+
+app.post('/players/register-username', async (req, res) => {
+  try {
+    const rawName = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+    const walletAddress = req.body.walletAddress;
+    const signature = req.body.signature;
+
+    if (!/^[a-zA-Z0-9_-]{2,15}$/.test(rawName)) {
+      return res.status(400).json({
+        error: 'Username must be 2-15 characters using letters, numbers, _ or -'
+      });
+    }
+    if (!ethers.isAddress(walletAddress) || !signature) {
+      return res.status(400).json({ error: 'Wallet address and signature are required' });
+    }
+
+    const normalizedWallet = walletAddress.toLowerCase();
+    const nameKey = rawName.toLowerCase();
+    const recoveredAddress = ethers.verifyMessage(
+      usernameRegistrationMessage(normalizedWallet, rawName),
+      signature
+    ).toLowerCase();
+
+    if (recoveredAddress !== normalizedWallet) {
+      return res.status(401).json({ error: 'Invalid wallet signature' });
+    }
+
+    const walletPlayer = await Player.findOne({ walletAddress: normalizedWallet });
+    if (walletPlayer) {
+      if (walletPlayer.nameKey === nameKey || walletPlayer.name.toLowerCase() === nameKey) {
+        return res.status(200).json(walletPlayer);
+      }
+      return res.status(409).json({
+        error: `This wallet is already registered as ${walletPlayer.name}`
+      });
+    }
+
+    const namePlayer = await Player.findOne({
+      $or: [
+        { nameKey },
+        { name: new RegExp(`^${escapeRegex(rawName)}$`, 'i') }
+      ]
+    });
+
+    if (namePlayer?.walletAddress && namePlayer.walletAddress !== normalizedWallet) {
+      return res.status(409).json({ error: 'Username is already registered' });
+    }
+
+    const player = namePlayer || new Player({
+      name: rawName,
+      rating: 1000,
+      gamesPlayed: 0,
+      wins: 0,
+      losses: 0,
+      lastActive: new Date()
+    });
+
+    player.name = rawName;
+    player.nameKey = nameKey;
+    player.walletAddress = normalizedWallet;
+    player.lastActive = new Date();
+    await player.save();
+
+    res.status(namePlayer ? 200 : 201).json(player);
+  } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({ error: 'Wallet or username is already registered' });
+    }
+    console.error('Error registering wallet username:', error);
+    res.status(500).json({ error: 'Failed to register username' });
   }
 });
 

@@ -78,3 +78,79 @@
     width: auto;
   }
 }
+
+.confirmation-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(5px);
+}
+
+.confirmation-dialog {
+  width: min(460px, 100%);
+  padding: 24px;
+  border: 2px solid #fdd040;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #111520, #080a10);
+  color: #f5f7fb;
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.58);
+  font-family: "Press Start 2P", monospace;
+  text-align: center;
+}
+
+.confirmation-dialog--danger {
+  border-color: #ff6464;
+}
+
+.confirmation-dialog h2 {
+  margin: 0 0 18px;
+  color: #fdd040;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.confirmation-dialog--danger h2 {
+  color: #ff6464;
+}
+
+.confirmation-dialog p {
+  margin: 0;
+  color: #c8cfdd;
+  font-size: 0.72rem;
+  line-height: 1.8;
+}
+
+.confirmation-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.confirmation-button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.66rem;
+}
+
+.confirmation-button--cancel {
+  background: #2a3040;
+  color: #f5f7fb;
+}
+
+.confirmation-button--confirm {
+  background: #fdd040;
+  color: #11151f;
+}
+
+.confirmation-dialog--danger .confirmation-button--confirm {
+  background: #ff6464;
+  color: #fff;
+}

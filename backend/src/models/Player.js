@@ -8,6 +8,19 @@ const playerSchema = new mongoose.Schema({
     trim: true,
     index: true
   },
+  nameKey: {
+    type: String,
+    unique: true,
+    sparse: true,
+    index: true
+  },
+  walletAddress: {
+    type: String,
+    unique: true,
+    sparse: true,
+    lowercase: true,
+    index: true
+  },
   rating: {
     type: Number,
     default: 1000,
@@ -57,5 +70,4 @@ playerSchema.methods.updateGameStats = function(gameResult, newRating) {
 const Player = mongoose.model('Player', playerSchema);
 
 module.exports = Player;
-
 

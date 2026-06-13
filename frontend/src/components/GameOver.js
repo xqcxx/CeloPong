@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAccount } from 'wagmi';
 import io from 'socket.io-client';
-import { STORAGE_KEY, BACKEND_URL, REMATCH_ROUTE } from '../constants';
+import { BACKEND_URL, REMATCH_ROUTE } from '../constants';
 import { useClaimPrize, useGG, useReportMatch } from '../hooks/useContract';
 import { BLOCK_EXPLORER_URL } from '../contracts/PongEscrow';
 import '../styles/GameOver.css';
@@ -16,7 +16,7 @@ const GAME_START_EVENT = 'gameStart';
 const DEFAULT_SCORE = [0, 0];
 const WAITING_TEXT = 'Waiting for opponent...';
 
-const GameOver = () => {
+const GameOver = ({ savedUsername }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { notify } = useNotification();
@@ -61,7 +61,7 @@ const GameOver = () => {
       return;
     }
 
-    const username = localStorage.getItem(STORAGE_KEY);
+    const username = savedUsername;
     if (!username) {
       navigate('/');
       return;
@@ -107,7 +107,7 @@ const GameOver = () => {
       socket.removeAllListeners();
       socket.disconnect();
     };
-  }, [result, navigate, notify]);
+  }, [result, navigate, notify, savedUsername]);
 
   const handleClaimPrize = useCallback(async () => {
     if (!result?.roomCode || !result?.winnerSignature) return;

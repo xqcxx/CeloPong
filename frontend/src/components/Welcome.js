@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppKit } from '@reown/appkit/react';
-import { useAccount } from 'wagmi';
+import { useAccount, useSignMessage } from 'wagmi';
 import { parseUnits } from 'viem';
 import '../styles/Welcome.css';
 import { BACKEND_URL, SHOW_BACKEND_URL_BANNER } from '../constants';
@@ -39,6 +39,7 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
   // Web3 hooks
   const { open } = useAppKit();
   const { address, isConnected } = useAccount();
+  const { signMessageAsync } = useSignMessage();
   const {
     stakeAsPlayer1,
     hash: stakingTxHash,
@@ -257,6 +258,12 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
   }, [stakingError]);
 
   const promptUsername = (callback) => {
+    if (!isConnected || !address) {
+      notify('Connect your wallet before choosing a username.', { type: 'warning' });
+      open();
+      return;
+    }
+
     if (savedUsername) {
       callback(savedUsername);
       return;
@@ -276,12 +283,49 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
     document.body.appendChild(modal);
     modal.showModal();
 
-    modal.querySelector('form').onsubmit = (e) => {
+    modal.querySelector('form').onsubmit = async (e) => {
       e.preventDefault();
-      const username = document.getElementById('username').value;
-      onUsernameSet(username);
-      callback(username);
-      modal.remove();
+      const form = modal.querySelector('form');
+      const submitButton = form.querySelector('button[type="submit"]');
+      const username = document.getElementById('username').value.trim();
+      const normalizedAddress = address.toLowerCase();
+      const message = [
+        'PONG-IT username registration',
+        `Wallet: ${normalizedAddress}`,
+        `Username: ${username}`
+      ].join('\n');
+
+      submitButton.disabled = true;
+      submitButton.textContent = 'SIGN WALLET...';
+
+      try {
+        const signature = await signMessageAsync({ message });
+        const response = await fetch(`${BACKEND_URL}/players/register-username`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: username,
+            walletAddress: normalizedAddress,
+            signature
+          })
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(body.error || 'Unable to register username');
+        }
+
+        onUsernameSet(body.name);
+        callback(body.name);
+        notify(`Username ${body.name} is linked to your wallet.`, { type: 'success' });
+        modal.remove();
+      } catch (error) {
+        notify(error.message || 'Username registration failed', {
+          type: 'error',
+          duration: 0
+        });
+        submitButton.disabled = false;
+        submitButton.textContent = 'Continue';
+      }
     };
   };
 

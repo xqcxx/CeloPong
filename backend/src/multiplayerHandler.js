@@ -2,6 +2,7 @@ const RoomManager = require('./roomManager');
 const GameManager = require('./gameManager');
 const LeaderboardManager = require('./leaderboardManager');
 const Game = require('./models/Game');
+const Player = require('./models/Player');
 const signatureService = require('./services/signatureService');
 const escrowVerificationService = require('./services/escrowVerificationService');
 const emitLeaderboardUpdate = require('./utils/emitLeaderboardUpdate');
@@ -98,7 +99,13 @@ class MultiplayerHandler {
     }
   }
 
-  handleCreateRoom(socket, player, providedRoomCode) {
+  async handleCreateRoom(socket, player, providedRoomCode) {
+    const identity = await this.validatePlayerIdentity(player);
+    if (!identity.success) {
+      socket.emit('error', { message: identity.error });
+      return;
+    }
+
     const existingRoom = this.roomManager.getRoomByPlayer(socket.id);
     if (existingRoom) {
       socket.emit('error', { message: 'Already in a room' });
@@ -125,6 +132,12 @@ class MultiplayerHandler {
 
   async handleJoinRoom(socket, { roomCode, player }) {
     console.log(`🔵 handleJoinRoom called - Room: ${roomCode}, Player: ${player?.name}, Socket: ${socket.id}`);
+
+    const identity = await this.validatePlayerIdentity(player);
+    if (!identity.success) {
+      socket.emit('error', { message: identity.error });
+      return;
+    }
 
     const existingRoom = this.roomManager.getRoomByPlayer(socket.id);
     if (existingRoom) {
@@ -240,7 +253,13 @@ class MultiplayerHandler {
     }
   }
 
-  handleFindRandomMatch(socket, player) {
+  async handleFindRandomMatch(socket, player) {
+    const identity = await this.validatePlayerIdentity(player);
+    if (!identity.success) {
+      socket.emit('error', { message: identity.error });
+      return;
+    }
+
     const existingRoom = this.roomManager.getRoomByPlayer(socket.id);
     if (existingRoom) {
       socket.emit('error', { message: 'Already in a room' });
@@ -317,10 +336,17 @@ class MultiplayerHandler {
       return;
     }
 
-    const ratingResult = await this.leaderboardManager.processGameResult(
-      winner.name,
-      loser.name
-    );
+    let ratingResult = null;
+    let gameRecord = null;
+
+    try {
+      ratingResult = await this.leaderboardManager.processGameResult(
+        winner.name,
+        loser.name
+      );
+    } catch (error) {
+      console.error('Error updating ratings at game over:', error);
+    }
 
     // Save game result to database (both staked and casual games)
     try {
@@ -328,7 +354,7 @@ class MultiplayerHandler {
       const winnerRole = game.players[0].socketId === winner.socketId ? 'player1' : 'player2';
 
       // Check if game record already exists
-      let gameRecord = await Game.findOne({ roomCode });
+      gameRecord = await Game.findOne({ roomCode });
 
       // Convert score array to object if needed
       const scoreObject = game.score ? { player1: game.score[0], player2: game.score[1] } : { player1: 0, player2: 0 };
@@ -420,12 +446,16 @@ class MultiplayerHandler {
       finalScore: game.score || [0, 0]
     };
 
-    this.io.to(roomCode).emit('gameOver', gameOverData);
+    try {
+      this.io.to(roomCode).emit('gameOver', gameOverData);
 
-    const leaderboard = await this.leaderboardManager.getTopPlayers(10);
-    emitLeaderboardUpdate(this.io, leaderboard);
-
-    this.endGame(roomCode);
+      const leaderboard = await this.leaderboardManager.getTopPlayers(10);
+      emitLeaderboardUpdate(this.io, leaderboard);
+    } catch (error) {
+      console.error('Error broadcasting game over:', error);
+    } finally {
+      this.endGame(roomCode);
+    }
   }
 
   handlePaddleMove(socket, { position }) {
@@ -627,6 +657,23 @@ class MultiplayerHandler {
     } catch (error) {
       console.error(`Failed to mark staked room ${room.code} as cancelled:`, error);
     }
+  }
+
+  async validatePlayerIdentity(player) {
+    if (!player?.name || !player?.walletAddress) {
+      return { success: false, error: 'Connect your wallet and register a username first' };
+    }
+
+    const registeredPlayer = await Player.findOne({
+      name: player.name,
+      walletAddress: player.walletAddress.toLowerCase()
+    }).lean();
+
+    if (!registeredPlayer) {
+      return { success: false, error: 'Username does not belong to this wallet' };
+    }
+
+    return { success: true, player: registeredPlayer };
   }
 
   endGame(roomCode) {

@@ -1,10 +1,19 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
 import '../../styles/Notifications.css';
 
 const NotificationContext = createContext(null);
 
 export function NotificationProvider({ children }) {
   const [notifications, setNotifications] = useState([]);
+  const [confirmation, setConfirmation] = useState(null);
+  const confirmationResolver = useRef(null);
 
   const dismiss = useCallback((id) => {
     setNotifications(current => current.filter(notification => notification.id !== id));
@@ -27,7 +36,34 @@ export function NotificationProvider({ children }) {
     return id;
   }, [dismiss]);
 
-  const value = useMemo(() => ({ notify, dismiss }), [notify, dismiss]);
+  const confirm = useCallback((options) => {
+    if (confirmationResolver.current) {
+      confirmationResolver.current(false);
+    }
+
+    setConfirmation({
+      title: options.title || 'Confirm Action',
+      message: options.message,
+      confirmLabel: options.confirmLabel || 'Confirm',
+      cancelLabel: options.cancelLabel || 'Cancel',
+      tone: options.tone || 'warning'
+    });
+
+    return new Promise(resolve => {
+      confirmationResolver.current = resolve;
+    });
+  }, []);
+
+  const resolveConfirmation = useCallback((accepted) => {
+    confirmationResolver.current?.(accepted);
+    confirmationResolver.current = null;
+    setConfirmation(null);
+  }, []);
+
+  const value = useMemo(
+    () => ({ notify, dismiss, confirm }),
+    [notify, dismiss, confirm]
+  );
 
   return (
     <NotificationContext.Provider value={value}>
@@ -51,6 +87,37 @@ export function NotificationProvider({ children }) {
           </div>
         ))}
       </div>
+      {confirmation && (
+        <div className="confirmation-overlay" role="presentation">
+          <div
+            className={`confirmation-dialog confirmation-dialog--${confirmation.tone}`}
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="confirmation-title"
+            aria-describedby="confirmation-message"
+          >
+            <h2 id="confirmation-title">{confirmation.title}</h2>
+            <p id="confirmation-message">{confirmation.message}</p>
+            <div className="confirmation-actions">
+              <button
+                type="button"
+                className="confirmation-button confirmation-button--cancel"
+                onClick={() => resolveConfirmation(false)}
+              >
+                {confirmation.cancelLabel}
+              </button>
+              <button
+                type="button"
+                className="confirmation-button confirmation-button--confirm"
+                onClick={() => resolveConfirmation(true)}
+                autoFocus
+              >
+                {confirmation.confirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </NotificationContext.Provider>
   );
 }

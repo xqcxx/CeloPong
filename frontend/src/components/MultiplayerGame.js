@@ -36,7 +36,7 @@ const MultiplayerGame = ({ username }) => {
   const [stakingErrorMessage, setStakingErrorMessage] = useState(null);
   const [isCursorHidden, setIsCursorHidden] = useState(false);
   const navigate = useNavigate();
-  const { notify } = useNotification();
+  const { notify, confirm } = useNotification();
   const location = useLocation();
   const containerRef = useRef(null);
   const prevGameDataRef = useRef(null);
@@ -217,13 +217,20 @@ const MultiplayerGame = ({ username }) => {
     }
   }, [isPaused]);
 
-  const handleForfeitGame = useCallback(() => {
-    if (window.confirm('Are you sure you want to forfeit? You will lose the game.')) {
+  const handleForfeitGame = useCallback(async () => {
+    const accepted = await confirm({
+      title: 'Forfeit Match?',
+      message: 'You will immediately lose this game and your opponent will be declared the winner.',
+      confirmLabel: 'Forfeit',
+      tone: 'danger'
+    });
+
+    if (accepted) {
       if (socketRef.current) {
         socketRef.current.emit('forfeitGame');
       }
     }
-  }, []);
+  }, [confirm]);
 
   const handleRematchResponse = useCallback((accepted) => {
     if (socketRef.current) {
@@ -589,13 +596,20 @@ const MultiplayerGame = ({ username }) => {
     };
   }, []);
 
-  const handleLeaveGame = useCallback(() => {
+  const handleLeaveGame = useCallback(async () => {
     const leavingWaitingStake = isWaiting && gameMode === 'create-staked';
     const message = leavingWaitingStake
       ? 'Leave this lobby? Your stake can be reclaimed after the 10-minute join timeout.'
       : 'Are you sure you want to leave? You will forfeit the game.';
 
-    if (window.confirm(message)) {
+    const accepted = await confirm({
+      title: leavingWaitingStake ? 'Leave Staked Lobby?' : 'Leave Match?',
+      message,
+      confirmLabel: leavingWaitingStake ? 'Leave Lobby' : 'Forfeit & Leave',
+      tone: leavingWaitingStake ? 'warning' : 'danger'
+    });
+
+    if (accepted) {
       if (socketRef.current) {
         socketRef.current.emit(leavingWaitingStake ? 'leaveRoom' : 'forfeitGame');
       }
@@ -608,7 +622,7 @@ const MultiplayerGame = ({ username }) => {
       }
       navigate('/');
     }
-  }, [navigate, isWaiting, gameMode, notify]);
+  }, [navigate, isWaiting, gameMode, notify, confirm]);
 
   return (
     <div className="game-container" ref={containerRef} style={{ touchAction: 'none' }}>
