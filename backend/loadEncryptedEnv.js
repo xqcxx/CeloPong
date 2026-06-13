@@ -1,14 +1,11 @@
 const fs = require("fs");
 const crypto = require("crypto");
-const path = require("path");
 const dotenv = require("dotenv");
 const readline = require("readline/promises");
 
 async function loadEncryptedEnv(file = ".env.enc") {
-  const filePath = path.isAbsolute(file) ? file : path.resolve(__dirname, file);
-
-  if (!fs.existsSync(filePath)) {
-    throw new Error(`${filePath} not found`);
+  if (!fs.existsSync(file)) {
+    throw new Error(`${file} not found`);
   }
 
   const rl = readline.createInterface({
@@ -19,7 +16,7 @@ async function loadEncryptedEnv(file = ".env.enc") {
   const password = await rl.question("Secrets password: ");
   rl.close();
 
-  const payload = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  const payload = JSON.parse(fs.readFileSync(file, "utf8"));
 
   const salt = Buffer.from(payload.salt, "base64");
   const iv = Buffer.from(payload.iv, "base64");
@@ -41,23 +38,6 @@ async function loadEncryptedEnv(file = ".env.enc") {
   for (const [key, value] of Object.entries(parsed)) {
     process.env[key] = value;
   }
-
-  return parsed;
-}
-
-// CLI mode: when run directly, write to temp file for shell sourcing
-if (require.main === module) {
-  const tmpFile = process.argv[2] || ".env.decrypted";
-  loadEncryptedEnv()
-    .then((parsed) => {
-      const lines = Object.entries(parsed).map(([k, v]) => `${k}=${v}`);
-      fs.writeFileSync(tmpFile, lines.join("\n"));
-      console.error("Decrypted env vars written to", tmpFile);
-    })
-    .catch((err) => {
-      console.error("Decryption failed:", err.message);
-      process.exit(1);
-    });
 }
 
 module.exports = { loadEncryptedEnv };

@@ -30,8 +30,11 @@ else
 fi
 
 # Load encrypted PRIVATE_KEY (prompts for password)
+DECRYPTED_FILE="$SCRIPT_DIR/.env.decrypted"
 if [ -f .env.enc ]; then
-    eval $(node "$SCRIPT_DIR/loadEncryptedEnv.js")
+    node "$SCRIPT_DIR/loadEncryptedEnv.js" "$DECRYPTED_FILE"
+    source "$DECRYPTED_FILE"
+    rm -f "$DECRYPTED_FILE"
 else
     echo "Error: .env.enc not found!"
     echo "Create it with: node encrypt-env.js"
