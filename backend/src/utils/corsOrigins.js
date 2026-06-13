@@ -5,6 +5,7 @@ const DEFAULT_DEV_ORIGINS = [
   'http://127.0.0.1:4173',
   // Production
   'https://celopong-frontend.vercel.app',
+  'https://frontend-rosy-iota-16.vercel.app',
   'https://frontend-next-three-gilt.vercel.app',
   'https://celopong.onrender.com',
 ];
@@ -12,6 +13,7 @@ const DEFAULT_DEV_ORIGINS = [
 const ORIGIN_SOURCES = {
   ENV: 'env',
   FALLBACK_ENV: 'fallback-env',
+  COMBINED: 'combined',
   DEFAULT: 'default',
   WILDCARD: 'wildcard',
 };
@@ -27,6 +29,18 @@ function parseDevOrigins(value) {
   return value.split(',').map(normalizeUrl).filter(Boolean);
 }
 
+function mergeOrigins(...originLists) {
+  const merged = [];
+
+  originLists.flat().filter(Boolean).forEach((origin) => {
+    if (!merged.includes(origin)) {
+      merged.push(origin);
+    }
+  });
+
+  return merged;
+}
+
 /**
  * Returns the effective CORS configuration.
  */
@@ -40,19 +54,25 @@ function getCorsOrigins(
     return { origins: true, source: ORIGIN_SOURCES.WILDCARD };
   }
 
-  const normalized = normalizeUrl(envUrl);
-  if (normalized) {
-    return { origins: [normalized], source: ORIGIN_SOURCES.ENV };
-  }
-
-  const fallback = normalizeUrl(fallbackUrl);
-  if (fallback) {
-    return { origins: [fallback], source: ORIGIN_SOURCES.FALLBACK_ENV };
-  }
-
   const overrideOrigins = parseDevOrigins(devOverrides);
-  if (overrideOrigins?.length) {
-    return { origins: overrideOrigins, source: ORIGIN_SOURCES.DEFAULT };
+  const envOrigins = parseDevOrigins(envUrl);
+  const fallbackOrigins = parseDevOrigins(fallbackUrl);
+
+  if (envOrigins?.length || fallbackOrigins?.length || overrideOrigins?.length) {
+    const origins = mergeOrigins(
+      envOrigins,
+      fallbackOrigins,
+      overrideOrigins,
+      DEFAULT_DEV_ORIGINS
+    );
+
+    const source = envOrigins?.length
+      ? ORIGIN_SOURCES.COMBINED
+      : fallbackOrigins?.length
+        ? ORIGIN_SOURCES.FALLBACK_ENV
+        : ORIGIN_SOURCES.DEFAULT;
+
+    return { origins, source };
   }
 
   return { origins: DEFAULT_DEV_ORIGINS, source: ORIGIN_SOURCES.DEFAULT };
@@ -61,5 +81,6 @@ function getCorsOrigins(
 module.exports = {
   ORIGIN_SOURCES,
   getCorsOrigins,
+  mergeOrigins,
   normalizeUrl,
 };
