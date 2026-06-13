@@ -44,7 +44,7 @@ fi
 DECRYPTED_FILE="$SCRIPT_DIR/.env.decrypted"
 if [ -f .env.enc ]; then
     node "$SCRIPT_DIR/loadEncryptedEnv.js" "$DECRYPTED_FILE"
-    source "$DECRYPTED_FILE"
+    export $(cat "$DECRYPTED_FILE" | xargs)
     rm -f "$DECRYPTED_FILE"
 else
     echo "Error: .env.enc not found!"
