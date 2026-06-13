@@ -11,6 +11,8 @@ import { CURRENCIES, isNativeToken, FEE_CURRENCIES } from '../config/currencies'
 import { PONG_ESCROW_ADDRESS, BLOCK_EXPLORER_URL } from '../contracts/PongEscrow';
 import { isMiniPay, supportsFeeAbstraction } from '../utils/minipay';
 import { useLeaderboardSubscription, useBackendUrl } from '../hooks';
+import { useNotification } from './notifications/NotificationProvider';
+import PendingStakes from './PendingStakes';
 
 const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
   const [activeGames, setActiveGames] = useState([]);
@@ -32,6 +34,7 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
   const socketRef = useRef(null);
   const { leaderboard, isLoading: isLeaderboardLoading, socket } = useLeaderboardSubscription();
   const { url: backendUrl, source: backendUrlSource } = useBackendUrl();
+  const { notify } = useNotification();
 
   // Web3 hooks
   const { open } = useAppKit();
@@ -542,7 +545,7 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
   const handleCreateStakedMatch = () => {
     promptUsername((username) => {
       if (!isConnected) {
-        alert('Please connect your wallet to create a staked match');
+        notify('Please connect your wallet to create a staked match', { type: 'warning' });
         return;
       }
       showCurrencyPicker();
@@ -854,6 +857,8 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
             </div>
           </div>
         )}
+
+        <PendingStakes />
 
         {SHOW_BACKEND_URL_BANNER && (
           // Developer helper: quickly see which backend URL is active

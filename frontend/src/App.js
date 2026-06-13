@@ -7,6 +7,7 @@ import GameOver from './components/GameOver';
 import MyWins from './components/MyWins';
 import GameHistory from './components/GameHistory';
 import { Web3Provider } from './components/Web3Provider';
+import { NotificationProvider } from './components/notifications/NotificationProvider';
 import './styles/App.css';
 import { STORAGE_KEY } from './constants';
 
@@ -35,9 +36,10 @@ function App() {
 
   return (
     <Web3Provider>
-      <Router>
-        <div className="App">
-          <Routes>
+      <NotificationProvider>
+        <Router>
+          <div className="App">
+            <Routes>
             <Route
               path="/"
               element={
@@ -85,11 +87,12 @@ function App() {
               path="/game-history"
               element={<GameHistory savedUsername={username} />}
             />
-          </Routes>
-        </div>
-      </Router>
+            </Routes>
+          </div>
+        </Router>
+      </NotificationProvider>
     </Web3Provider>
   );
 }
 
-export default App; 
+export default App;

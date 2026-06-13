@@ -3,6 +3,7 @@ const GameManager = require('./gameManager');
 const LeaderboardManager = require('./leaderboardManager');
 const Game = require('./models/Game');
 const signatureService = require('./services/signatureService');
+const escrowVerificationService = require('./services/escrowVerificationService');
 const emitLeaderboardUpdate = require('./utils/emitLeaderboardUpdate');
 
 class MultiplayerHandler {
@@ -14,7 +15,10 @@ class MultiplayerHandler {
     this.gameLoops = new Map();
 
     setInterval(() => {
-      this.roomManager.cleanupStaleRooms();
+      const removedRooms = this.roomManager.cleanupStaleRooms();
+      removedRooms.forEach(room => {
+        this.markWaitingStakedRoomCancelled(room);
+      });
     }, 60000);
   }
 
@@ -35,6 +39,10 @@ class MultiplayerHandler {
 
     socket.on('player2StakeCompleted', (data) => {
       this.handlePlayer2StakeCompleted(socket, data);
+    });
+
+    socket.on('cancelPendingStake', () => {
+      this.handleCancelPendingStake(socket);
     });
 
     socket.on('spectateGame', (data) => {
@@ -125,53 +133,48 @@ class MultiplayerHandler {
       return;
     }
 
-    const result = this.roomManager.joinRoom(roomCode, player, socket.id);
+    try {
+      console.log(`📡 Checking for staked match in database: ${roomCode}`);
+      const gameRecord = await Game.findOne({ roomCode });
 
+      if (gameRecord?.isStaked) {
+        if (gameRecord.player2TxHash) {
+          socket.emit('error', { message: 'This staked room has already been joined' });
+          return;
+        }
+
+        const reservation = this.roomManager.reserveRoom(roomCode, player, socket.id);
+        if (!reservation.success) {
+          socket.emit('error', { message: reservation.error });
+          return;
+        }
+
+        socket.emit('stakedMatchJoined', {
+          roomCode,
+          stakeAmount: gameRecord.stakeAmount,
+          stakeCurrency: gameRecord.stakeCurrency || 'CELO',
+          player1Address: gameRecord.player1Address
+        });
+        this.io.to(roomCode).emit('waitingForPlayer2Stake', {
+          stakeAmount: gameRecord.stakeAmount,
+          stakeCurrency: gameRecord.stakeCurrency || 'CELO'
+        });
+        return;
+      }
+    } catch (error) {
+      console.error('❌ Error checking for staked match:', error);
+      socket.emit('error', { message: 'Unable to verify room staking status. Please try again.' });
+      return;
+    }
+
+    const result = this.roomManager.joinRoom(roomCode, player, socket.id);
     if (!result.success) {
       console.log(`❌ Failed to join room ${roomCode}: ${result.error}`);
       socket.emit('error', { message: result.error });
       return;
     }
 
-    console.log(`✅ Player ${player?.name} joined room ${roomCode}`);
     socket.join(roomCode);
-
-    // Check if this is a staked match
-    try {
-      console.log(`📡 Checking for staked match in database: ${roomCode}`);
-      const gameRecord = await Game.findOne({ roomCode });
-
-      if (gameRecord) {
-        console.log(`📊 Game record:`, JSON.stringify(gameRecord, null, 2));
-
-        if (gameRecord.isStaked && !gameRecord.player2TxHash) {
-          // This is a staked match and Player 2 hasn't staked yet
-          console.log(`💎 Staked match detected! Prompting Player 2 to stake ${gameRecord.stakeAmount} ${gameRecord.stakeCurrency || 'CELO'}`);
-          socket.emit('stakedMatchJoined', {
-            roomCode,
-            stakeAmount: gameRecord.stakeAmount,
-            stakeCurrency: gameRecord.stakeCurrency || 'CELO',
-            player1Address: gameRecord.player1Address
-          });
-
-          this.io.to(roomCode).emit('waitingForPlayer2Stake', {
-            stakeAmount: gameRecord.stakeAmount,
-            stakeCurrency: gameRecord.stakeCurrency || 'CELO'
-          });
-
-          console.log(`⏳ Waiting for Player 2 to stake...`);
-          return; // Don't start game yet
-        } else {
-          console.log(`ℹ️  Not a staked match or Player 2 already staked. isStaked: ${gameRecord.isStaked}, player2TxHash: ${gameRecord.player2TxHash}`);
-        }
-      } else {
-        console.log(`ℹ️  No game record found - proceeding with normal match`);
-      }
-    } catch (error) {
-      console.error('❌ Error checking for staked match:', error);
-      // Continue with normal game start if check fails
-    }
-
     console.log(`🎮 Starting normal game for room ${roomCode}`);
     this.io.to(roomCode).emit('roomReady', {
       room: result.room
@@ -180,18 +183,61 @@ class MultiplayerHandler {
     this.startGame(roomCode);
   }
 
-  handlePlayer2StakeCompleted(socket, { roomCode }) {
+  async handlePlayer2StakeCompleted(socket, { roomCode, txHash, playerAddress }) {
     const room = this.roomManager.getRoom(roomCode);
     if (!room) {
       socket.emit('error', { message: 'Room not found' });
       return;
     }
 
-    console.log('Player 2 staking completed for room:', roomCode);
+    if (room.pendingGuest?.socketId !== socket.id) {
+      socket.emit('error', { message: 'You do not hold the staking reservation for this room' });
+      return;
+    }
 
-    this.io.to(roomCode).emit('roomReady', { room });
+    try {
+      const verifiedStake = await escrowVerificationService.verifyPlayer2Stake({
+        roomCode,
+        txHash,
+        playerAddress
+      });
+      const gameRecord = await Game.findOne({ roomCode });
+      if (!gameRecord?.isStaked) {
+        throw new Error('Staked game record not found');
+      }
 
-    this.startGame(roomCode);
+      gameRecord.player2 = {
+        name: room.pendingGuest.name,
+        rating: room.pendingGuest.rating
+      };
+      gameRecord.player2Address = verifiedStake.player2Address;
+      gameRecord.player2TxHash = verifiedStake.player2TxHash;
+      gameRecord.challengeAccepted = true;
+      gameRecord.status = 'playing';
+      await gameRecord.save();
+
+      const result = this.roomManager.commitReservedGuest(roomCode, socket.id);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      socket.join(roomCode);
+      this.io.to(roomCode).emit('roomReady', { room: result.room });
+      this.startGame(roomCode);
+    } catch (error) {
+      console.error('Player 2 stake verification failed:', error);
+      socket.emit('player2StakeVerificationFailed', {
+        message: error.message || 'Unable to verify staking transaction'
+      });
+    }
+  }
+
+  handleCancelPendingStake(socket) {
+    const room = this.roomManager.releaseReservation(socket.id);
+    if (room) {
+      socket.emit('pendingStakeCancelled');
+      this.io.to(room.code).emit('waitingForOpponent', { roomCode: room.code });
+    }
   }
 
   handleFindRandomMatch(socket, player) {
@@ -202,7 +248,12 @@ class MultiplayerHandler {
     }
 
     const availableRooms = Array.from(this.roomManager.rooms.values())
-      .filter(room => room.status === 'waiting' && !room.guest);
+      .filter(room =>
+        room.status === 'waiting' &&
+        !room.guest &&
+        !room.pendingGuest &&
+        !room.isStaked
+      );
 
     if (availableRooms.length > 0) {
       const room = availableRooms[0];
@@ -392,6 +443,7 @@ class MultiplayerHandler {
     if (!room) return;
 
     const roomCode = room.code;
+    this.markWaitingStakedRoomCancelled(room);
 
     socket.leave(roomCode);
 
@@ -435,21 +487,6 @@ class MultiplayerHandler {
         }
       }
     }
-  }
-
-  handleDisconnect(socket) {
-    this.handleLeaveSpectate(socket);
-
-    const room = this.roomManager.getRoomByPlayer(socket.id);
-    if (!room) return;
-
-    const roomCode = room.code;
-
-    this.io.to(roomCode).emit('opponentDisconnected');
-
-    this.endGame(roomCode);
-
-    this.roomManager.removePlayerFromRoom(socket.id);
   }
 
   handlePauseGame(socket) {
@@ -534,10 +571,20 @@ class MultiplayerHandler {
   handleDisconnect(socket) {
     this.handleLeaveSpectate(socket);
 
+    const reservedRoom = this.roomManager.getReservedRoomBySocket(socket.id);
+    if (reservedRoom) {
+      this.roomManager.releaseReservation(socket.id);
+      this.io.to(reservedRoom.code).emit('waitingForOpponent', {
+        roomCode: reservedRoom.code
+      });
+      return;
+    }
+
     const room = this.roomManager.getRoomByPlayer(socket.id);
     if (!room) return;
 
     const roomCode = room.code;
+    this.markWaitingStakedRoomCancelled(room);
 
     const game = this.gameManager.getGame(roomCode);
     if (game && game.status === 'active') {
@@ -558,6 +605,28 @@ class MultiplayerHandler {
 
     this.endGame(roomCode);
     this.roomManager.removePlayerFromRoom(socket.id);
+  }
+
+  async markWaitingStakedRoomCancelled(room) {
+    if (!room?.isStaked || room.status !== 'waiting') return;
+
+    try {
+      await Game.updateOne(
+        {
+          roomCode: room.code,
+          isStaked: true,
+          player2TxHash: { $in: [null, ''] },
+          status: 'waiting'
+        },
+        {
+          status: 'cancelled',
+          challengeCreated: false,
+          challengeAccepted: false
+        }
+      );
+    } catch (error) {
+      console.error(`Failed to mark staked room ${room.code} as cancelled:`, error);
+    }
   }
 
   endGame(roomCode) {

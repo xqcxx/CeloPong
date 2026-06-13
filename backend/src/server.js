@@ -11,6 +11,7 @@ const MultiplayerHandler = require('./multiplayerHandler');
 const Player = require('./models/Player');
 const Game = require('./models/Game');
 const signatureService = require('./services/signatureService');
+const escrowVerificationService = require('./services/escrowVerificationService');
 const { getCorsOrigins } = require('./utils/corsOrigins');
 
 const app = express();
@@ -342,6 +343,7 @@ app.post('/games', async (req, res) => {
       score,
       isStaked,
       stakeAmount,
+      stakeCurrency,
       player1Address,
       player2Address,
       player1TxHash,
@@ -384,6 +386,7 @@ app.post('/games', async (req, res) => {
         score: scoreObject,
         isStaked: isStaked || false,
         stakeAmount,
+        stakeCurrency: stakeCurrency || 'CELO',
         player1Address: player1Address?.toLowerCase(),
         player2Address: player2Address?.toLowerCase(),
         player1TxHash,
@@ -625,6 +628,58 @@ app.get('/games/challenges', async (req, res) => {
   } catch (error) {
     console.error('Error fetching challenges:', error);
     res.status(500).json({ error: 'Failed to fetch challenges' });
+  }
+});
+
+app.get('/games/pending-stakes/:playerAddress', async (req, res) => {
+  try {
+    const playerAddress = req.params.playerAddress?.toLowerCase();
+    if (!/^0x[a-f0-9]{40}$/.test(playerAddress || '')) {
+      return res.status(400).json({ error: 'Valid player address is required' });
+    }
+
+    const games = await Game.find({
+      isStaked: true,
+      player1Address: playerAddress,
+      player2TxHash: { $in: [null, ''] },
+      status: { $in: ['waiting', 'cancelled'] }
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.status(200).json(games);
+  } catch (error) {
+    console.error('Error fetching pending stakes:', error);
+    res.status(500).json({ error: 'Failed to fetch pending stakes' });
+  }
+});
+
+app.post('/games/:roomCode/refunded', async (req, res) => {
+  try {
+    const { roomCode } = req.params;
+    const { playerAddress } = req.body;
+
+    await escrowVerificationService.verifyRefund({ roomCode, playerAddress });
+
+    const game = await Game.findOneAndUpdate(
+      { roomCode, player1Address: playerAddress.toLowerCase() },
+      {
+        status: 'refunded',
+        challengeAccepted: false,
+        challengeCreated: false,
+        endedAt: new Date()
+      },
+      { new: true }
+    );
+
+    if (!game) {
+      return res.status(404).json({ error: 'Game record not found' });
+    }
+
+    res.status(200).json(game);
+  } catch (error) {
+    console.error('Error confirming refund:', error);
+    res.status(400).json({ error: error.message || 'Failed to confirm refund' });
   }
 });
 

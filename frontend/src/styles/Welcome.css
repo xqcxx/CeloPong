@@ -113,6 +113,91 @@ button:hover {
   margin-left: 0.25rem;
 }
 
+.pending-stakes {
+  margin-top: 20px;
+  padding: 18px;
+  border: 1px solid rgba(253, 208, 64, 0.42);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(253, 208, 64, 0.09), rgba(14, 17, 26, 0.88));
+}
+
+.pending-stakes-heading,
+.pending-stake-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.pending-stakes-heading h2 {
+  margin: 0 0 8px;
+  color: #fdd040;
+}
+
+.pending-stakes-heading p {
+  margin: 0;
+  color: #aeb5c5;
+  font-size: 0.72rem;
+  line-height: 1.6;
+}
+
+.pending-stakes-heading button,
+.pending-stake-action button {
+  border: 1px solid #fdd040;
+  border-radius: 7px;
+  padding: 9px 12px;
+  background: #fdd040;
+  color: #11151f;
+  cursor: pointer;
+  font-family: "Press Start 2P", monospace;
+  font-size: 0.62rem;
+}
+
+.pending-stakes-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.pending-stake-card {
+  padding: 14px;
+  border-radius: 9px;
+  background: rgba(8, 10, 16, 0.75);
+}
+
+.pending-stake-card > div:first-child {
+  display: grid;
+  gap: 7px;
+  text-align: left;
+}
+
+.pending-stake-card strong {
+  color: #fff;
+  font-size: 0.75rem;
+}
+
+.pending-stake-card span {
+  color: #aeb5c5;
+  font-size: 0.68rem;
+}
+
+.pending-stake-countdown {
+  color: #fdd040 !important;
+}
+
+@media (max-width: 600px) {
+  .pending-stakes-heading,
+  .pending-stake-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pending-stakes-heading button,
+  .pending-stake-action button {
+    width: 100%;
+  }
+}
+
 dialog {
   padding: 2rem;
   border: 2px solid rgb(116,113,203);

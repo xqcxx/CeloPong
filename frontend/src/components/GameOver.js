@@ -6,6 +6,7 @@ import { STORAGE_KEY, BACKEND_URL, REMATCH_ROUTE } from '../constants';
 import { useClaimPrize, useGG, useReportMatch } from '../hooks/useContract';
 import { BLOCK_EXPLORER_URL } from '../contracts/PongEscrow';
 import '../styles/GameOver.css';
+import { useNotification } from './notifications/NotificationProvider';
 
 const REMATCH_REQUEST_EVENT = 'requestRematch';
 const REMATCH_RESPONSE_EVENT = 'rematchResponse';
@@ -18,6 +19,7 @@ const WAITING_TEXT = 'Waiting for opponent...';
 const GameOver = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { notify } = useNotification();
   const result = location.state;
   const message = result?.message || 'Game Over';
   const finalScore = Array.isArray(result?.finalScore) ? result.finalScore : DEFAULT_SCORE;
@@ -95,7 +97,7 @@ const GameOver = () => {
     socket.on(GAME_START_EVENT, goToRematch);
 
     socket.on(REMATCH_DECLINED_EVENT, () => {
-      alert('Opponent declined rematch');
+      notify('Opponent declined rematch', { type: 'info' });
       setWaitingForResponse(false);
       setRematchRequested(false);
     });
@@ -105,7 +107,7 @@ const GameOver = () => {
       socket.removeAllListeners();
       socket.disconnect();
     };
-  }, [result, navigate]);
+  }, [result, navigate, notify]);
 
   const handleClaimPrize = useCallback(async () => {
     if (!result?.roomCode || !result?.winnerSignature) return;

@@ -91,7 +91,7 @@ const gameSchema = new mongoose.Schema({
   // Game status and timestamps
   status: {
     type: String,
-    enum: ['waiting', 'playing', 'finished'],
+    enum: ['waiting', 'playing', 'finished', 'cancelled', 'refunded'],
     default: 'waiting'
   },
   endedAt: {
@@ -133,5 +133,4 @@ gameSchema.methods.getPrizeAmount = function() {
 const Game = mongoose.model('Game', gameSchema);
 
 module.exports = Game;
-
 

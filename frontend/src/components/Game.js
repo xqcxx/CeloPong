@@ -6,6 +6,7 @@ import '../styles/Game.css';
 import { BACKEND_URL, INITIAL_RATING } from '../constants';
 import soundManager from '../utils/soundManager';
 import { useStakeAsPlayer2 } from '../hooks/useContract';
+import { useNotification } from './notifications/NotificationProvider';
 
 
 const Game = ({ username }) => {
@@ -24,6 +25,7 @@ const Game = ({ username }) => {
     players: []
   });
   const navigate = useNavigate();
+  const { notify } = useNotification();
   const location = useLocation();
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
@@ -414,7 +416,7 @@ const Game = ({ username }) => {
 
     newSocket.on('error', (error) => {
       console.error('Socket error:', error.message || error);
-      alert('Error: ' + (error.message || error));
+      notify('Error: ' + (error.message || error), { type: 'error' });
     });
 
     // Connect after setting up handlers
@@ -435,7 +437,7 @@ const Game = ({ username }) => {
         cleanupSocket();
       }
     };
-  }, [cleanupSocket, isConnecting, navigate, isGenomeMusicActive]);
+  }, [cleanupSocket, isConnecting, navigate, isGenomeMusicActive, notify]);
 
   // Setup keyboard listeners
   useEffect(() => {
@@ -541,42 +543,17 @@ const Game = ({ username }) => {
   // Handle successful Player2 staking
   useEffect(() => {
     if (isPlayer2StakingSuccess && player2TxHash && stakingData) {
-      console.log('Player 2 staking successful! Updating game record...');
+      console.log('Player 2 staking successful! Requesting backend verification...');
 
-      // Update game record with Player 2 data
-      fetch(`${BACKEND_URL}/games`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      if (socketRef.current) {
+        socketRef.current.emit('player2StakeCompleted', {
           roomCode: stakingData.roomCode,
-          player2: { name: username, rating: 800 },
-          player2Address: address,
-          player2TxHash: player2TxHash,
-          status: 'playing'
-        })
-      })
-        .then(res => res.json())
-        .then(data => {
-          console.log('✅ Player 2 stake recorded in database:', data);
-
-          // Notify backend that Player 2 has staked
-          if (socketRef.current) {
-            socketRef.current.emit('player2StakeCompleted', {
-              roomCode: stakingData.roomCode
-            });
-          }
-
-          // Close staking modal
-          setShowStakingModal(false);
-          setStakingInProgress(false);
-          setStakingData(null);
-        })
-        .catch(err => {
-          console.error('❌ Failed to update game record:', err);
-          alert('Failed to record your stake. Please contact support.');
+          txHash: player2TxHash,
+          playerAddress: address
         });
+      }
     }
-  }, [isPlayer2StakingSuccess, player2TxHash, stakingData, address, username]);
+  }, [isPlayer2StakingSuccess, player2TxHash, stakingData, address]);
 
   // Helper function to parse error messages
   const getErrorMessage = (error) => {

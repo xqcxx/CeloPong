@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import io from 'socket.io-client';
 import '../styles/Game.css';
 import { BACKEND_URL } from '../constants';
+import { useNotification } from './notifications/NotificationProvider';
 
 const SpectatorView = () => {
   const canvasRef = useRef(null);
@@ -19,6 +20,7 @@ const SpectatorView = () => {
   const [spectatorCount, setSpectatorCount] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const navigate = useNavigate();
+  const { notify } = useNotification();
   const location = useLocation();
   const isMounted = useRef(false);
 
@@ -103,13 +105,13 @@ const SpectatorView = () => {
 
     socket.on('gameOver', (result) => {
       console.log('Game over:', result);
-      alert('Game has ended!');
+      notify('Game has ended!', { type: 'info' });
       navigate('/');
     });
 
     socket.on('error', (error) => {
       console.error('Spectator error:', error);
-      alert('Error: ' + error.message);
+      notify('Error: ' + error.message, { type: 'error' });
       navigate('/');
     });
 
@@ -120,7 +122,7 @@ const SpectatorView = () => {
         socketRef.current.disconnect();
       }
     };
-  }, [roomCode, spectatorName, navigate]);
+  }, [roomCode, spectatorName, navigate, notify]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

@@ -9,6 +9,7 @@ import soundManager from '../utils/soundManager';
 import { useStakeAsPlayer2, useApproveToken } from '../hooks/useContract';
 import { CURRENCIES, isNativeToken } from '../config/currencies';
 import { PONG_ESCROW_ADDRESS } from '../contracts/PongEscrow';
+import { useNotification } from './notifications/NotificationProvider';
 
 const MultiplayerGame = ({ username }) => {
   const canvasRef = useRef(null);
@@ -35,6 +36,7 @@ const MultiplayerGame = ({ username }) => {
   const [stakingErrorMessage, setStakingErrorMessage] = useState(null);
   const [isCursorHidden, setIsCursorHidden] = useState(false);
   const navigate = useNavigate();
+  const { notify } = useNotification();
   const location = useLocation();
   const containerRef = useRef(null);
   const prevGameDataRef = useRef(null);
@@ -233,11 +235,11 @@ const MultiplayerGame = ({ username }) => {
 
   const handlePlayer2Stake = useCallback(async () => {
     if (!isConnected) {
-      alert('Please connect your wallet first');
+      notify('Please connect your wallet first', { type: 'warning' });
       return;
     }
     if (!stakingData) {
-      alert('No staking data available');
+      notify('No staking data available', { type: 'error' });
       return;
     }
 
@@ -258,7 +260,7 @@ const MultiplayerGame = ({ username }) => {
       console.error('Error initiating Player2 stake:', error);
       setIsPlayer2Staking(false);
     }
-  }, [isConnected, stakingData, stakeAsPlayer2, approveToken]);
+  }, [isConnected, stakingData, stakeAsPlayer2, approveToken, notify]);
 
   // Handle successful Player2 staking transaction
   useEffect(() => {
@@ -270,32 +272,16 @@ const MultiplayerGame = ({ username }) => {
     });
 
     if (isPlayer2StakingSuccess && player2StakingTxHash && stakingData) {
-      console.log('✅ Player2 staking successful! Updating game record...');
-
-      fetch(`${BACKEND_URL}/games`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          roomCode: stakingData.roomCode,
-          player2: { name: username, rating: 800 },
-          player2Address: address,
-          player2TxHash: player2StakingTxHash,
-          stakeCurrency: stakingData.stakeCurrency || 'CELO',
-          status: 'ready'
-        })
-      })
-
+      console.log('✅ Player2 staking successful! Requesting backend verification...');
       if (socketRef.current) {
         socketRef.current.emit('player2StakeCompleted', {
-          roomCode: stakingData.roomCode
+          roomCode: stakingData.roomCode,
+          txHash: player2StakingTxHash,
+          playerAddress: address
         });
       }
-
-      setIsPlayer2Staking(false);
-      setShowPlayer2StakingModal(false);
-      setStakingData(null);
     }
-  }, [isPlayer2StakingSuccess, player2StakingTxHash, stakingData, username, address]);
+  }, [isPlayer2StakingSuccess, player2StakingTxHash, stakingData, address]);
 
   // Handle Player2 staking errors
   useEffect(() => {
@@ -337,7 +323,8 @@ const MultiplayerGame = ({ username }) => {
       const playerData = {
         name: username,
         rating: INITIAL_RATING,
-        socketId: socket.id
+        socketId: socket.id,
+        walletAddress: address
       };
 
       if (gameMode === 'create' || gameMode === 'create-staked') {
@@ -365,6 +352,10 @@ const MultiplayerGame = ({ username }) => {
     socket.on('roomReady', (data) => {
       console.log('Room ready:', data);
       setIsWaiting(true);
+      setIsPlayer2Staking(false);
+      setShowPlayer2StakingModal(false);
+      setStakingData(null);
+      setStakingErrorMessage(null);
     });
 
     socket.on('stakedMatchJoined', (data) => {
@@ -377,6 +368,13 @@ const MultiplayerGame = ({ username }) => {
       console.log('⏳ Waiting for Player2 to stake:', data);
       setIsWaiting(true);
       // Update the waiting message to indicate we're waiting for Player2 to stake
+    });
+
+    socket.on('player2StakeVerificationFailed', (data) => {
+      const message = data?.message || 'Unable to verify the staking transaction.';
+      setIsPlayer2Staking(false);
+      setStakingErrorMessage(message);
+      notify(message, { type: 'error', duration: 0 });
     });
 
     socket.on('gameStart', (data) => {
@@ -451,7 +449,7 @@ const MultiplayerGame = ({ username }) => {
 
     socket.on('playerForfeited', (data) => {
       soundManager.stopAll();
-      alert(`${data.forfeitedPlayer} forfeited. ${data.winner} wins!`);
+      notify(`${data.forfeitedPlayer} forfeited. ${data.winner} wins!`, { type: 'warning' });
       navigate('/');
     });
 
@@ -461,35 +459,37 @@ const MultiplayerGame = ({ username }) => {
     });
 
     socket.on('rematchDeclined', () => {
-      alert('Rematch declined');
+      notify('Rematch declined', { type: 'info' });
       navigate('/');
     });
 
     socket.on('opponentLeft', () => {
-      alert('Opponent left the game');
+      notify('Opponent left the game', { type: 'warning' });
       navigate('/');
     });
 
     socket.on('opponentDisconnected', (data) => {
       soundManager.stopAll();
       if (data && data.winner) {
-        alert(`${data.disconnectedPlayer} disconnected. ${data.winner} wins!`);
+        notify(`${data.disconnectedPlayer} disconnected. ${data.winner} wins!`, {
+          type: 'warning'
+        });
       } else {
-        alert('Opponent disconnected');
+        notify('Opponent disconnected', { type: 'warning' });
       }
       navigate('/');
     });
 
     socket.on('error', (error) => {
       console.error('Socket error:', error);
-      alert('Error: ' + error.message);
+      notify('Error: ' + error.message, { type: 'error' });
     });
 
     return () => {
       socket.removeAllListeners();
       socket.disconnect();
     };
-  }, [username, gameMode, joinRoomCode, navigate]);
+  }, [username, gameMode, joinRoomCode, navigate, notify, address]);
 
   useEffect(() => {
     isMounted.current = true;
@@ -590,14 +590,25 @@ const MultiplayerGame = ({ username }) => {
   }, []);
 
   const handleLeaveGame = useCallback(() => {
-    if (window.confirm('Are you sure you want to leave? You will forfeit the game.')) {
+    const leavingWaitingStake = isWaiting && gameMode === 'create-staked';
+    const message = leavingWaitingStake
+      ? 'Leave this lobby? Your stake can be reclaimed after the 10-minute join timeout.'
+      : 'Are you sure you want to leave? You will forfeit the game.';
+
+    if (window.confirm(message)) {
       if (socketRef.current) {
-        socketRef.current.emit('forfeitGame');
+        socketRef.current.emit(leavingWaitingStake ? 'leaveRoom' : 'forfeitGame');
       }
       soundManager.stopAll();
+      if (leavingWaitingStake) {
+        notify('Your unmatched stake remains recoverable from Pending Stakes after the timeout.', {
+          type: 'warning',
+          duration: 8000
+        });
+      }
       navigate('/');
     }
-  }, [navigate]);
+  }, [navigate, isWaiting, gameMode, notify]);
 
   return (
     <div className="game-container" ref={containerRef} style={{ touchAction: 'none' }}>
@@ -724,6 +735,7 @@ const MultiplayerGame = ({ username }) => {
                   </button>
                   <button
                     onClick={() => {
+                      socketRef.current?.emit('cancelPendingStake');
                       setShowPlayer2StakingModal(false);
                       setStakingData(null);
                       setStakingErrorMessage(null);
@@ -758,6 +770,7 @@ const MultiplayerGame = ({ username }) => {
                   </button>
                   <button
                     onClick={() => {
+                      socketRef.current?.emit('cancelPendingStake');
                       setShowPlayer2StakingModal(false);
                       setStakingData(null);
                       setStakingErrorMessage(null);

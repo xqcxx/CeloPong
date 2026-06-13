@@ -1,0 +1,80 @@
+.notification-viewport {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 10000;
+  display: grid;
+  gap: 10px;
+  width: min(390px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.app-notification {
+  --notification-accent: #53a7ff;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 15px 16px;
+  border: 1px solid color-mix(in srgb, var(--notification-accent) 55%, #202434);
+  border-left: 5px solid var(--notification-accent);
+  border-radius: 10px;
+  background: rgba(14, 17, 26, 0.96);
+  color: #f5f7fb;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.38);
+  font-family: "Press Start 2P", monospace;
+  font-size: 0.68rem;
+  line-height: 1.65;
+  pointer-events: auto;
+  animation: notification-enter 180ms ease-out;
+}
+
+.app-notification--success {
+  --notification-accent: #35d07f;
+}
+
+.app-notification--warning {
+  --notification-accent: #fdd040;
+}
+
+.app-notification--error {
+  --notification-accent: #ff6464;
+}
+
+.app-notification__message {
+  flex: 1;
+}
+
+.app-notification__close {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #aeb5c5;
+  cursor: pointer;
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.app-notification__close:hover {
+  color: #fff;
+}
+
+@keyframes notification-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 600px) {
+  .notification-viewport {
+    top: 12px;
+    right: 16px;
+    left: 16px;
+    width: auto;
+  }
+}
