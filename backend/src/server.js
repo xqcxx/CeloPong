@@ -608,25 +608,7 @@ app.get('/games/player/:playerName/history', async (req, res) => {
   }
 });
 
-// Get game by room code
-app.get('/games/:roomCode', async (req, res) => {
-  try {
-    const { roomCode } = req.params;
-
-    const game = await Game.findOne({ roomCode }).lean();
-
-    if (!game) {
-      return res.status(404).json({ error: 'Game not found' });
-    }
-
-    res.status(200).json(game);
-  } catch (error) {
-    console.error('Error fetching game:', error);
-    res.status(500).json({ error: 'Failed to fetch game' });
-  }
-});
-
-// Get open challenges for the challenge board
+// Get open challenges for the challenge board — MUST be before /games/:roomCode
 app.get('/games/challenges', async (req, res) => {
   try {
     const challenges = await Game.find({
@@ -643,6 +625,24 @@ app.get('/games/challenges', async (req, res) => {
   } catch (error) {
     console.error('Error fetching challenges:', error);
     res.status(500).json({ error: 'Failed to fetch challenges' });
+  }
+});
+
+// Get game by room code
+app.get('/games/:roomCode', async (req, res) => {
+  try {
+    const { roomCode } = req.params;
+
+    const game = await Game.findOne({ roomCode }).lean();
+
+    if (!game) {
+      return res.status(404).json({ error: 'Game not found' });
+    }
+
+    res.status(200).json(game);
+  } catch (error) {
+    console.error('Error fetching game:', error);
+    res.status(500).json({ error: 'Failed to fetch game' });
   }
 });
 
