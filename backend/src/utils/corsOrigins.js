@@ -3,6 +3,10 @@ const DEFAULT_DEV_ORIGINS = [
   'http://127.0.0.1:3000',
   'http://localhost:4173',
   'http://127.0.0.1:4173',
+  // Production
+  'https://celopong-frontend.vercel.app',
+  'https://frontend-next-three-gilt.vercel.app',
+  'https://celopong.onrender.com',
 ];
 
 const ORIGIN_SOURCES = {
