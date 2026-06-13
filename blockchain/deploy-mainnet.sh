@@ -1,21 +1,22 @@
 #!/bin/bash
 
-# Deploy PongEscrow to Celo L2 Mainnet (OP Stack)
+# Deploy PongEscrow to Celo Mainnet
 # ==================================================
 # ⚠️  WARNING: This deploys to MAINNET with REAL CELO!
 # ==================================================
 # Prerequisites:
 #   - Foundry installed (forge, cast)
-#   - .env file with PRIVATE_KEY, BACKEND_ORACLE_ADDRESS, and CELO_MAINNET
+#   - .env file with BACKEND_ORACLE_ADDRESS, CELO_MAINNET
+#   - .env.enc with encrypted PRIVATE_KEY (use encrypt-env.js to create)
 #   - REAL CELO in your wallet
 
-set -e  # Exit on any error
+set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 echo "=========================================="
-echo "🚀 Deploying PongEscrow to Celo L2 MAINNET"
+echo "  Deploying PongEscrow to Celo MAINNET"
 echo "=========================================="
 echo ""
 echo "⚠️  WARNING: This will deploy to MAINNET!"
@@ -24,98 +25,88 @@ echo ""
 read -p "Are you sure you want to continue? (yes/no): " CONFIRM
 
 if [ "$CONFIRM" != "yes" ]; then
-    echo "❌ Deployment cancelled."
+    echo "Deployment cancelled."
     exit 0
 fi
 
-# Load environment variables
+# Load non-sensitive environment variables
 if [ -f .env ]; then
     export $(grep -v '^#' .env | xargs)
 else
-    echo "❌ Error: .env file not found!"
-    echo "Please create a .env file with:"
-    echo "  PRIVATE_KEY=your_private_key"
+    echo "Error: .env file not found!"
+    echo "Create a .env file with:"
     echo "  BACKEND_ORACLE_ADDRESS=0x..."
     echo "  CELO_MAINNET=https://..."
     exit 1
 fi
 
+# Load encrypted PRIVATE_KEY (prompts for password)
+if [ -f .env.enc ]; then
+    eval $(node "$SCRIPT_DIR/loadEncryptedEnv.js")
+else
+    echo "Error: .env.enc not found!"
+    echo "Create it with: node encrypt-env.js"
+    exit 1
+fi
+
 # Validate required environment variables
 if [ -z "$PRIVATE_KEY" ]; then
-    echo "❌ Error: PRIVATE_KEY not set in .env"
+    echo "Error: PRIVATE_KEY not loaded"
     exit 1
 fi
 
 if [ -z "$BACKEND_ORACLE_ADDRESS" ]; then
-    echo "❌ Error: BACKEND_ORACLE_ADDRESS not set in .env"
+    echo "Error: BACKEND_ORACLE_ADDRESS not set in .env"
     exit 1
 fi
 
 if [ -z "$CELO_MAINNET" ]; then
-    echo "❌ Error: CELO_MAINNET RPC URL not set in .env"
+    echo "Error: CELO_MAINNET RPC URL not set in .env"
     exit 1
 fi
 
 RPC_URL="$CELO_MAINNET"
-echo "🌐 RPC URL: $RPC_URL"
+echo "RPC: $RPC_URL"
 
-# Get deployer address
 DEPLOYER_ADDRESS=$(cast wallet address --private-key $PRIVATE_KEY)
-echo "📍 Deployer Address: $DEPLOYER_ADDRESS"
-
-# Check balance
-echo "💰 Checking balance..."
-BALANCE=$(cast balance $DEPLOYER_ADDRESS --rpc-url "$RPC_URL")
-BALANCE_ETH=$(cast from-wei $BALANCE)
-echo "   Balance: $BALANCE_ETH CELO"
-
-if [ "$BALANCE" = "0" ]; then
-    echo "❌ Error: No CELO balance!"
-    exit 1
-fi
+echo "Deployer: $DEPLOYER_ADDRESS"
 
 echo ""
-echo "🔧 Backend Oracle: $BACKEND_ORACLE_ADDRESS"
+echo "Balance:"
+cast balance $DEPLOYER_ADDRESS --rpc-url "$RPC_URL"
+echo ""
+
+echo "Backend Oracle: $BACKEND_ORACLE_ADDRESS"
 echo ""
 
 # Final confirmation
 read -p "Deploy with the above configuration? (yes/no): " FINAL_CONFIRM
 
 if [ "$FINAL_CONFIRM" != "yes" ]; then
-    echo "❌ Deployment cancelled."
+    echo "Deployment cancelled."
     exit 0
 fi
 
-# Deploy contract
-echo "📦 Deploying contract..."
-DEPLOY_OUTPUT=$(forge script script/Deploy.s.sol:DeployScript \
+# Compile
+echo "--- Compiling ---"
+forge build
+
+# Deploy
+echo ""
+echo "--- Deploying ---"
+forge script script/Deploy.s.sol:DeployScript \
     --rpc-url "$RPC_URL" \
     --broadcast \
-    --verify \
-    --verifier blockscout \
-    --verifier-url https://celo.blockscout.com/api \
-    -vvvv 2>&1)
+    --gas-price 205000000000 \
+    --legacy \
+    -vvvv
 
-echo "$DEPLOY_OUTPUT"
-
-# Extract deployed address from output
-CONTRACT_ADDRESS=$(echo "$DEPLOY_OUTPUT" | grep -oP 'PongEscrow deployed at: \K0x[a-fA-F0-9]{40}' | head -1)
-
-if [ -n "$CONTRACT_ADDRESS" ]; then
-    echo ""
-    echo "=========================================="
-    echo "✅ MAINNET Deployment Successful!"
-    echo "=========================================="
-    echo "📄 Contract Address: $CONTRACT_ADDRESS"
-    echo "🔍 View on Explorer: https://celo.blockscout.com/address/$CONTRACT_ADDRESS"
-    echo ""
-    echo "💡 If verification failed, you can verify manually:"
-    echo "forge verify-contract $CONTRACT_ADDRESS src/PongEscrow.sol:PongEscrow \\"
-    echo "    --verifier blockscout \\"
-    echo "    --verifier-url https://celo.blockscout.com/api \\"
-    echo "    --constructor-args \$(cast abi-encode \"constructor(address)\" $BACKEND_ORACLE_ADDRESS)"
-else
-    echo ""
-    echo "⚠️  Could not extract contract address from output."
-    echo "Check the deployment output above for the address."
-fi
+echo ""
+echo "Done."
+echo ""
+echo "Verify manually:"
+echo "forge verify-contract <ADDRESS> src/PongEscrow.sol:PongEscrow \\"
+echo "  --verifier etherscan \\"
+echo "  --verifier-url \"https://api.etherscan.io/v2/api?chainid=42220\" \\"
+echo "  --etherscan-api-key \$CELOSCAN_API_KEY \\"
+echo "  --constructor-args \$(cast abi-encode \"constructor(address)\" $BACKEND_ORACLE_ADDRESS)"

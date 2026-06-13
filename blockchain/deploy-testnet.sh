@@ -4,8 +4,8 @@
 # ==========================================
 # Prerequisites:
 #   - Foundry installed (forge, cast)
-#   - .env file with PRIVATE_KEY, BACKEND_ORACLE_ADDRESS, and CELO_SEPOLIA
-#   - CELOSCAN_API_KEY for verification
+#   - .env file with BACKEND_ORACLE_ADDRESS, CELO_SEPOLIA, CELOSCAN_API_KEY
+#   - .env.enc with encrypted PRIVATE_KEY (use encrypt-env.js to create)
 #   - Test CELO in your wallet
 
 set -e
@@ -17,23 +17,31 @@ echo "=========================================="
 echo "  Deploying PongEscrow to Celo Sepolia"
 echo "=========================================="
 
-# Load environment variables
+# Load non-sensitive environment variables
 if [ -f .env ]; then
     export $(grep -v '^#' .env | xargs)
 else
     echo "Error: .env file not found!"
     echo "Create a .env file with:"
-    echo "  PRIVATE_KEY=your_private_key"
     echo "  BACKEND_ORACLE_ADDRESS=0x..."
     echo "  CELO_SEPOLIA=https://..."
     echo "  CELOSCAN_API_KEY=your_key"
     exit 1
 fi
 
+# Load encrypted PRIVATE_KEY (prompts for password)
+if [ -f .env.enc ]; then
+    eval $(node "$SCRIPT_DIR/loadEncryptedEnv.js")
+else
+    echo "Error: .env.enc not found!"
+    echo "Create it with: node encrypt-env.js"
+    exit 1
+fi
+
 # Validate required environment variables
 for var in PRIVATE_KEY BACKEND_ORACLE_ADDRESS CELO_SEPOLIA; do
     if [ -z "${!var}" ]; then
-        echo "Error: $var not set in .env"
+        echo "Error: $var not set"
         exit 1
     fi
 done
