@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.13;
 
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+// import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -18,7 +18,6 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
  */
 contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
     using ECDSA for bytes32;
-    using MessageHashUtils for bytes32;
     using SafeERC20 for IERC20;
 
     // ============ Constants ============
@@ -209,7 +208,7 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
 
     // ============ Constructor ============
 
-    constructor(address _backendOracle) Ownable(msg.sender) {
+    constructor(address _backendOracle) {
         require(_backendOracle != address(0), "Invalid oracle address");
         backendOracle = _backendOracle;
     }
@@ -331,9 +330,10 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
 
         // Verify backend signature
         bytes32 messageHash = keccak256(abi.encodePacked(roomCode, msg.sender));
-        bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
-        address signer = ethSignedMessageHash.recover(signature);
-
+        address signer = ECDSA.recover(
+            ECDSA.toEthSignedMessageHash(messageHash),
+            signature
+        );
         require(signer == backendOracle, "Invalid signature");
 
         // Update state before transfer (checks-effects-interactions)
