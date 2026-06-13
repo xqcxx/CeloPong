@@ -34,6 +34,7 @@ const MultiplayerGame = ({ username }) => {
   const [stakingData, setStakingData] = useState(null);
   const [isPlayer2Staking, setIsPlayer2Staking] = useState(false);
   const [stakingErrorMessage, setStakingErrorMessage] = useState(null);
+  const [lastPlayer2StakeTxHash, setLastPlayer2StakeTxHash] = useState(null);
   const [isCursorHidden, setIsCursorHidden] = useState(false);
   const navigate = useNavigate();
   const { notify, confirm } = useNotification();
@@ -254,6 +255,15 @@ const MultiplayerGame = ({ username }) => {
     setStakingErrorMessage(null);
     setIsPlayer2Staking(true);
 
+    if (lastPlayer2StakeTxHash) {
+      socketRef.current?.emit('player2StakeCompleted', {
+        roomCode: stakingData.roomCode,
+        txHash: lastPlayer2StakeTxHash,
+        playerAddress: address
+      });
+      return;
+    }
+
     const currency = CURRENCIES[stakingData.stakeCurrency] || CURRENCIES.CELO;
 
     try {
@@ -267,7 +277,7 @@ const MultiplayerGame = ({ username }) => {
       console.error('Error initiating Player2 stake:', error);
       setIsPlayer2Staking(false);
     }
-  }, [isConnected, stakingData, stakeAsPlayer2, approveToken, notify]);
+  }, [isConnected, stakingData, lastPlayer2StakeTxHash, address, stakeAsPlayer2, approveToken, notify]);
 
   // Handle successful Player2 staking transaction
   useEffect(() => {
@@ -280,6 +290,7 @@ const MultiplayerGame = ({ username }) => {
 
     if (isPlayer2StakingSuccess && player2StakingTxHash && stakingData) {
       console.log('✅ Player2 staking successful! Requesting backend verification...');
+      setLastPlayer2StakeTxHash(player2StakingTxHash);
       if (socketRef.current) {
         socketRef.current.emit('player2StakeCompleted', {
           roomCode: stakingData.roomCode,
@@ -363,11 +374,14 @@ const MultiplayerGame = ({ username }) => {
       setShowPlayer2StakingModal(false);
       setStakingData(null);
       setStakingErrorMessage(null);
+      setLastPlayer2StakeTxHash(null);
     });
 
     socket.on('stakedMatchJoined', (data) => {
       console.log('💎 Staked match joined! Player2 needs to stake:', data);
       setStakingData(data);
+      setLastPlayer2StakeTxHash(null);
+      setStakingErrorMessage(null);
       setShowPlayer2StakingModal(true);
     });
 
@@ -745,7 +759,7 @@ const MultiplayerGame = ({ username }) => {
                     className="accept-btn"
                     disabled={!isConnected}
                   >
-                    Retry Staking
+                    {lastPlayer2StakeTxHash ? 'Retry Verification' : 'Retry Staking'}
                   </button>
                   <button
                     onClick={() => {
@@ -753,6 +767,7 @@ const MultiplayerGame = ({ username }) => {
                       setShowPlayer2StakingModal(false);
                       setStakingData(null);
                       setStakingErrorMessage(null);
+                      setLastPlayer2StakeTxHash(null);
                       navigate('/');
                     }}
                     className="decline-btn"

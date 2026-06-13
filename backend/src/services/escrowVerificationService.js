@@ -11,6 +11,8 @@ class EscrowVerificationService {
     this.contract = null;
     this.contractAddress = null;
     this.interface = new ethers.Interface(ESCROW_ABI);
+    this.receiptRetryAttempts = 12;
+    this.receiptRetryDelayMs = 2500;
   }
 
   initialize() {
@@ -27,6 +29,68 @@ class EscrowVerificationService {
     this.contract = new ethers.Contract(this.contractAddress, ESCROW_ABI, this.provider);
   }
 
+  async sleep(ms) {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  async fetchConfirmedStakeTransaction(txHash) {
+    let lastReceipt = null;
+    let lastTransaction = null;
+
+    for (let attempt = 0; attempt < this.receiptRetryAttempts; attempt += 1) {
+      const [receipt, transaction] = await Promise.all([
+        this.provider.getTransactionReceipt(txHash),
+        this.provider.getTransaction(txHash)
+      ]);
+
+      lastReceipt = receipt;
+      lastTransaction = transaction;
+
+      if (receipt?.status === 1 && transaction) {
+        return { receipt, transaction };
+      }
+
+      if (receipt && receipt.status === 0) {
+        throw new Error('Staking transaction failed on-chain');
+      }
+
+      if (attempt < this.receiptRetryAttempts - 1) {
+        await this.sleep(this.receiptRetryDelayMs);
+      }
+    }
+
+    if (!lastReceipt || lastReceipt.status !== 1) {
+      throw new Error('Staking transaction is not confirmed yet. Retry verification in a few seconds.');
+    }
+
+    throw new Error('Staking transaction details are still syncing. Retry verification in a few seconds.');
+  }
+
+  async waitForPlayer2MatchState(roomCode, expectedPlayer) {
+    let lastMatchData = null;
+
+    for (let attempt = 0; attempt < this.receiptRetryAttempts; attempt += 1) {
+      lastMatchData = await this.contract.getMatch(roomCode);
+
+      if (
+        Number(lastMatchData.status) === 2 &&
+        ethers.getAddress(lastMatchData.player2) === expectedPlayer
+      ) {
+        return lastMatchData;
+      }
+
+      if (attempt < this.receiptRetryAttempts - 1) {
+        await this.sleep(this.receiptRetryDelayMs);
+      }
+    }
+
+    if (lastMatchData && Number(lastMatchData.status) >= 2) {
+      throw new Error('On-chain match state does not confirm this wallet as Player 2');
+    }
+
+    throw new Error('Stake is mined but the match state is still syncing. Retry verification in a few seconds.');
+  }
+
   async verifyPlayer2Stake({ roomCode, txHash, playerAddress }) {
     this.initialize();
 
@@ -37,14 +101,7 @@ class EscrowVerificationService {
       throw new Error('A valid staking transaction hash is required');
     }
 
-    const [receipt, transaction] = await Promise.all([
-      this.provider.getTransactionReceipt(txHash),
-      this.provider.getTransaction(txHash)
-    ]);
-
-    if (!receipt || receipt.status !== 1) {
-      throw new Error('Staking transaction is not confirmed');
-    }
+    const { transaction } = await this.fetchConfirmedStakeTransaction(txHash);
     if (!transaction || !transaction.to ||
         ethers.getAddress(transaction.to) !== this.contractAddress) {
       throw new Error('Transaction was not sent to the escrow contract');
@@ -63,11 +120,7 @@ class EscrowVerificationService {
       throw new Error('Transaction does not stake for this room');
     }
 
-    const matchData = await this.contract.getMatch(roomCode);
-    if (Number(matchData.status) !== 2 ||
-        ethers.getAddress(matchData.player2) !== expectedPlayer) {
-      throw new Error('On-chain match does not confirm this player as Player 2');
-    }
+    await this.waitForPlayer2MatchState(roomCode, expectedPlayer);
 
     return {
       player2Address: expectedPlayer.toLowerCase(),
