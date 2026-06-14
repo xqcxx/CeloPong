@@ -15,6 +15,12 @@ const signatureService = require('./services/signatureService');
 const escrowVerificationService = require('./services/escrowVerificationService');
 const walletSessionService = require('./services/walletSessionService');
 const { getCorsOrigins } = require('./utils/corsOrigins');
+const {
+  buildClaimSummary,
+  buildHistoryQuery,
+  normalizeWallet,
+  toHistoryGame
+} = require('./utils/gameHistory');
 
 const app = express();
 
@@ -501,6 +507,7 @@ app.post('/games', async (req, res) => {
       player2Address,
       player1TxHash,
       player2TxHash,
+      resultReason,
       status
     } = req.body;
 
@@ -522,6 +529,7 @@ app.post('/games', async (req, res) => {
       if (player2) game.player2 = player2;
       if (winner) game.winner = winner;
       if (scoreObject) game.score = scoreObject;
+      if (resultReason) game.resultReason = resultReason;
       if (player2Address) game.player2Address = player2Address?.toLowerCase();
       if (player2TxHash) game.player2TxHash = player2TxHash;
       if (winner) {
@@ -531,6 +539,8 @@ app.post('/games', async (req, res) => {
       }
     } else {
       // Create new game
+      const escrowAddress = isStaked ? process.env.PONG_ESCROW_ADDRESS?.toLowerCase() : undefined;
+      const chainId = isStaked ? Number(process.env.CELO_CHAIN_ID) : undefined;
       game = new Game({
         roomCode,
         player1,
@@ -544,6 +554,9 @@ app.post('/games', async (req, res) => {
         player2Address: player2Address?.toLowerCase(),
         player1TxHash,
         player2TxHash,
+        resultReason: resultReason || null,
+        escrowAddress,
+        chainId,
         status: status || (player2 ? 'playing' : 'waiting'),
         lifecyclePhase: isStaked
           ? (player2 ? 'ready' : 'waiting_for_player2')
@@ -554,19 +567,33 @@ app.post('/games', async (req, res) => {
       });
     }
 
-    // Generate signature if game finished and staked
-    if (game.isStaked && game.winner && game.winnerAddress && !game.winnerSignature) {
+    // Generate one authoritative result proof for all post-game contract actions.
+    if (
+      game.isStaked &&
+      game.winner &&
+      game.winnerAddress &&
+      game.player1Address &&
+      game.player2Address &&
+      game.resultReason &&
+      !game.resultSignature
+    ) {
       if (signatureService.isReady()) {
         try {
-          const signature = await signatureService.signWinner(
+          game.escrowAddress ||= process.env.PONG_ESCROW_ADDRESS?.toLowerCase();
+          game.chainId ||= Number(process.env.CELO_CHAIN_ID);
+          game.resultSignature = await signatureService.signResult({
+            chainId: game.chainId,
+            contractAddress: game.escrowAddress,
             roomCode,
-            game.winnerAddress,
-            stakeAmount
-          );
-          game.winnerSignature = signature;
-          console.log('✅ Winner signature generated for room:', roomCode);
+            player1Address: game.player1Address,
+            player2Address: game.player2Address,
+            winnerAddress: game.winnerAddress,
+            score1: game.score.player1,
+            score2: game.score.player2,
+            resultReason: game.resultReason
+          });
         } catch (error) {
-          console.error('❌ Failed to generate signature:', error);
+          console.error('❌ Failed to generate result signature:', error);
           // Continue saving game even if signature fails
         }
       } else {
@@ -654,6 +681,8 @@ app.get('/games/player/:playerName/history', async (req, res) => {
     const {
       filter = 'all',        // all, wins, losses
       staked,                // true, false, or undefined (all)
+      claimStatus = 'all',   // all, claimable, claimed
+      walletAddress,
       limit = 50,
       offset = 0
     } = req.query;
@@ -662,33 +691,18 @@ app.get('/games/player/:playerName/history', async (req, res) => {
       return res.status(400).json({ error: 'Player name is required' });
     }
 
-    // Build the query
-    const query = {
-      status: 'finished', // Only finished games
-      $or: [
-        { 'player1.name': playerName },
-        { 'player2.name': playerName }
-      ]
-    };
-
-    // Filter by staked/unstaked
-    if (staked !== undefined) {
-      query.isStaked = staked === 'true';
-    }
-
-    // Filter by wins/losses
-    if (filter === 'wins') {
-      query.winner = { $exists: true };
-      query.$or = [
-        { 'player1.name': playerName, winner: 'player1' },
-        { 'player2.name': playerName, winner: 'player2' }
-      ];
-    } else if (filter === 'losses') {
-      query.winner = { $exists: true };
-      query.$or = [
-        { 'player1.name': playerName, winner: 'player2' },
-        { 'player2.name': playerName, winner: 'player1' }
-      ];
+    let query;
+    try {
+      query = buildHistoryQuery({
+        playerName,
+        filter,
+        staked,
+        claimStatus,
+        walletAddress,
+        escrowAddress: process.env.PONG_ESCROW_ADDRESS
+      });
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
     }
 
     // Fetch games with pagination
@@ -711,6 +725,7 @@ app.get('/games/player/:playerName/history', async (req, res) => {
     };
 
     const allGames = await Game.find(allGamesQuery).lean();
+    const normalizedWallet = normalizeWallet(walletAddress);
 
     const stats = {
       totalGames: allGames.length,
@@ -737,26 +752,19 @@ app.get('/games/player/:playerName/history', async (req, res) => {
       ? ((stats.wins / stats.totalGames) * 100).toFixed(1)
       : 0;
 
-    // Transform games for frontend
-    const gamesWithDetails = games.map(game => ({
-      ...game,
-      opponent: game.player1?.name === playerName
-        ? game.player2?.name
-        : game.player1?.name,
-      result: !game.winner ? 'draw' :
-        (game.player1?.name === playerName && game.winner === 'player1') ||
-        (game.player2?.name === playerName && game.winner === 'player2')
-          ? 'win' : 'loss',
-      finalScore: game.score ?
-        (game.player1?.name === playerName
-          ? `${game.score.player1}-${game.score.player2}`
-          : `${game.score.player2}-${game.score.player1}`)
-        : 'N/A'
-    }));
+    const gamesWithDetails = games.map(game =>
+      toHistoryGame(game, playerName, process.env.PONG_ESCROW_ADDRESS)
+    );
+    const claimSummary = buildClaimSummary(
+      allGames,
+      normalizedWallet,
+      process.env.PONG_ESCROW_ADDRESS
+    );
 
     res.status(200).json({
       games: gamesWithDetails,
       stats,
+      claimSummary,
       pagination: {
         total: totalGames,
         limit: parseInt(limit),

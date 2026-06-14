@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAccount } from 'wagmi';
 import Welcome from './components/Welcome';
 import MultiplayerGame from './components/MultiplayerGame';
 import SpectatorView from './components/SpectatorView';
 import GameOver from './components/GameOver';
-import MyWins from './components/MyWins';
 import GameHistory from './components/GameHistory';
 import { Web3Provider } from './components/Web3Provider';
 import { NotificationProvider } from './components/notifications/NotificationProvider';
@@ -112,7 +111,7 @@ function AppContent() {
             />
             <Route
               path="/my-wins"
-              element={<MyWins />}
+              element={<Navigate to="/game-history?filter=wins" replace />}
             />
             <Route
               path="/game-history"

@@ -366,6 +366,77 @@
   color: rgb(253, 208, 64);
 }
 
+.claim-summary-grid {
+  max-width: 1200px;
+  margin: 0 auto 2rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.claim-summary-card,
+.claim-status-panel {
+  border: 2px solid rgb(253, 208, 64);
+  background: rgba(253, 208, 64, 0.08);
+  padding: 1rem;
+  display: flex;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+}
+
+.claim-summary-card {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.claim-summary-card strong {
+  color: rgb(253, 208, 64);
+  font-size: 0.8rem;
+}
+
+.legacy-badge {
+  color: #bbb;
+  border: 1px dashed #777;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.55rem;
+}
+
+.claim-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.claim-actions a {
+  color: rgb(116, 113, 203);
+  font-size: 0.6rem;
+}
+
+.claim-button,
+.claim-status-panel button {
+  background: rgb(253, 208, 64);
+  border: 0;
+  padding: 0.7rem 1rem;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.6rem;
+  cursor: pointer;
+}
+
+.claim-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.wallet-warning {
+  color: #ff6b6b;
+  font-size: 0.55rem;
+}
+
 /* Load More Section */
 .load-more-section {
   text-align: center;

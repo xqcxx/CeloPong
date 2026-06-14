@@ -46,6 +46,12 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
         REFUNDED        // 4 — Match cancelled, funds returned
     }
 
+    enum ResultReason {
+        SCORE,
+        FORFEIT,
+        DISCONNECT_TIMEOUT
+    }
+
     // ============ State Variables ============
 
     /// @notice Backend oracle address that signs winner declarations
@@ -325,32 +331,33 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
     }
 
     /**
-     * @notice Winner claims prize with backend signature (pull-based)
-     * @param roomCode  Room code for the match
-     * @param signature Backend's signature proving msg.sender is the winner
+     * @notice Winner claims prize with a backend-signed final result.
      */
-    function claimPrize(string calldata roomCode, bytes calldata signature)
+    function claimPrize(
+        string calldata roomCode,
+        address winner,
+        uint8 score1,
+        uint8 score2,
+        ResultReason reason,
+        bytes calldata signature
+    )
         external
         nonReentrant
     {
         Match storage matchData = matches[roomCode];
 
         require(
-            matchData.status == MatchStatus.BOTH_STAKED,
+            matchData.status == MatchStatus.BOTH_STAKED ||
+                matchData.status == MatchStatus.COMPLETED,
             "Match not ready for claiming"
         );
         require(matchData.winner == address(0), "Prize already claimed");
+        require(msg.sender == winner, "Only winner can claim");
 
-        // Verify backend signature
-        bytes32 messageHash = keccak256(abi.encodePacked(roomCode, msg.sender));
-        address signer = ECDSA.recover(
-            ECDSA.toEthSignedMessageHash(messageHash),
-            signature
-        );
-        require(signer == backendOracle, "Invalid signature");
+        _verifyResult(roomCode, matchData, winner, score1, score2, reason, signature);
 
         // Update state before transfer (checks-effects-interactions)
-        matchData.winner = msg.sender;
+        matchData.winner = winner;
         matchData.status = MatchStatus.COMPLETED;
         matchData.completedAt = block.timestamp;
 
@@ -358,9 +365,9 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
         address token = matchData.stakeToken;
 
         // Transfer prize in the correct currency
-        _transferTo(msg.sender, token, prize);
+        _transferTo(winner, token, prize);
 
-        emit PrizeClaimed(roomCode, msg.sender, token, prize, block.timestamp);
+        emit PrizeClaimed(roomCode, winner, token, prize, block.timestamp);
     }
 
     /**
@@ -547,16 +554,25 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
      * @notice Send a GG (good game) to an opponent after a completed match
      * @param roomCode Room code of the completed match
      */
-    function gg(string calldata roomCode) external {
+    function gg(
+        string calldata roomCode,
+        address winner,
+        uint8 score1,
+        uint8 score2,
+        ResultReason reason,
+        bytes calldata signature
+    ) external {
         Match storage m = matches[roomCode];
         require(
             m.player1 == msg.sender || m.player2 == msg.sender,
             "Not a participant"
         );
         require(
-            m.status == MatchStatus.COMPLETED,
+            m.status == MatchStatus.BOTH_STAKED ||
+                m.status == MatchStatus.COMPLETED,
             "Match not completed"
         );
+        _verifyResult(roomCode, m, winner, score1, score2, reason, signature);
         require(!ggSent[roomCode][msg.sender], "Already sent GG");
 
         ggSent[roomCode][msg.sender] = true;
@@ -651,7 +667,10 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
     function reportMatch(
         string calldata roomCode,
         uint8 score1,
-        uint8 score2
+        uint8 score2,
+        address winner,
+        ResultReason reason,
+        bytes calldata signature
     ) external {
         Match storage m = matches[roomCode];
         require(
@@ -659,9 +678,11 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
             "Not a participant"
         );
         require(
-            m.status == MatchStatus.COMPLETED,
+            m.status == MatchStatus.BOTH_STAKED ||
+                m.status == MatchStatus.COMPLETED,
             "Match not completed"
         );
+        _verifyResult(roomCode, m, winner, score1, score2, reason, signature);
         require(matchScores[roomCode].reportedAt == 0, "Already reported");
 
         matchScores[roomCode] = MatchScore({
@@ -701,6 +722,41 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
     }
 
     // ============ Internal Functions ============
+
+    function _verifyResult(
+        string calldata roomCode,
+        Match storage matchData,
+        address winner,
+        uint8 score1,
+        uint8 score2,
+        ResultReason reason,
+        bytes calldata signature
+    ) internal view {
+        require(
+            winner == matchData.player1 || winner == matchData.player2,
+            "Invalid winner"
+        );
+
+        bytes32 messageHash = keccak256(
+            abi.encode(
+                block.chainid,
+                address(this),
+                "MATCH_RESULT",
+                roomCode,
+                matchData.player1,
+                matchData.player2,
+                winner,
+                score1,
+                score2,
+                reason
+            )
+        );
+        address signer = ECDSA.recover(
+            ECDSA.toEthSignedMessageHash(messageHash),
+            signature
+        );
+        require(signer == backendOracle, "Invalid result signature");
+    }
 
     /**
      * @dev Transfer funds in native CELO or ERC-20

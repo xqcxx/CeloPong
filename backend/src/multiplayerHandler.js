@@ -699,18 +699,44 @@ class MultiplayerHandler {
     let gameRecord = await Game.findOne({ roomCode });
 
     if (gameRecord?.isStaked) {
+      const winnerAddress = winnerRole === 'player1'
+        ? gameRecord.player1Address
+        : gameRecord.player2Address;
+      const escrowAddress = gameRecord.escrowAddress || process.env.PONG_ESCROW_ADDRESS?.toLowerCase();
+      const chainId = gameRecord.chainId || Number(process.env.CELO_CHAIN_ID);
+      let resultSignature = gameRecord.resultSignature;
+
+      if (!resultSignature && signatureService.isReady()) {
+        try {
+          resultSignature = await signatureService.signResult({
+            chainId,
+            contractAddress: escrowAddress,
+            roomCode,
+            player1Address: gameRecord.player1Address,
+            player2Address: gameRecord.player2Address,
+            winnerAddress,
+            score1: scoreObject.player1,
+            score2: scoreObject.player2,
+            resultReason
+          });
+        } catch (error) {
+          console.error(`Failed to sign final result for ${roomCode}:`, error);
+        }
+      }
+
       gameRecord = await Game.findOneAndUpdate(
         { _id: gameRecord._id, resultProcessed: false },
         {
           resultProcessed: true,
           winner: winnerRole,
-          winnerAddress: winnerRole === 'player1'
-            ? gameRecord.player1Address
-            : gameRecord.player2Address,
+          winnerAddress,
           score: scoreObject,
           status: 'finished',
           lifecyclePhase: 'finished',
           resultReason,
+          resultSignature,
+          escrowAddress,
+          chainId,
           endedAt: new Date()
         },
         { new: true }
@@ -750,26 +776,6 @@ class MultiplayerHandler {
           gameRecord.endedAt = new Date();
         }
 
-        // Generate signature if staked and not already generated
-        if (gameRecord.isStaked && gameRecord.winnerAddress && !gameRecord.winnerSignature) {
-          if (signatureService.isReady()) {
-            try {
-              const signature = await signatureService.signWinner(
-                roomCode,
-                gameRecord.winnerAddress,
-                gameRecord.stakeAmount
-              );
-              gameRecord.winnerSignature = signature;
-              console.log(`✅ Winner signature generated for room: ${roomCode}`);
-              console.log(`🔐 Winner signature:`, signature.slice(0, 20) + '...');
-            } catch (error) {
-              console.error('❌ Failed to generate signature:', error);
-            }
-          } else {
-            console.warn('⚠️  Signature service not ready, skipping signature generation');
-          }
-        }
-
         await gameRecord.save();
         console.log(`✅ Game ${roomCode} updated with winner: ${winnerRole}`);
       } else {
@@ -806,7 +812,10 @@ class MultiplayerHandler {
       winner: winner.socketId,
       winnerName: winner.name,
       isStaked: gameRecord?.isStaked || false,
-      winnerSignature: gameRecord?.winnerSignature || null,
+      resultSignature: gameRecord?.resultSignature || null,
+      escrowAddress: gameRecord?.escrowAddress || null,
+      chainId: gameRecord?.chainId || null,
+      resultReason: gameRecord?.resultReason || resultReason,
       winnerAddress: gameRecord?.winnerAddress || null,
       stakeCurrency: gameRecord?.stakeCurrency || 'CELO',
       stakeAmount: gameRecord?.stakeAmount || null,

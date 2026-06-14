@@ -60,7 +60,17 @@ const gameSchema = new mongoose.Schema({
     lowercase: true
   },
   winnerSignature: {
-    type: String // Backend-signed proof of win
+    type: String // Legacy backend-signed proof of win
+  },
+  resultSignature: {
+    type: String // Backend-signed authoritative final result
+  },
+  escrowAddress: {
+    type: String,
+    lowercase: true
+  },
+  chainId: {
+    type: Number
   },
   claimed: {
     type: Boolean,

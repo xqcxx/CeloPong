@@ -7,6 +7,7 @@ import { useClaimPrize, useGG, useReportMatch } from '../hooks/useContract';
 import { BLOCK_EXPLORER_URL } from '../contracts/PongEscrow';
 import '../styles/GameOver.css';
 import { useNotification } from './notifications/NotificationProvider';
+import { isLegacyMatch } from '../utils/resultProof';
 
 const REMATCH_REQUEST_EVENT = 'requestRematch';
 const REMATCH_RESPONSE_EVENT = 'rematchResponse';
@@ -44,18 +45,18 @@ const GameOver = ({ savedUsername }) => {
   const [claiming, setClaiming] = useState(false);
   const [claimed, setClaimed] = useState(false);
   const [claimErrorMessage, setClaimErrorMessage] = useState(null);
+  const [activeClaimHash, setActiveClaimHash] = useState(null);
 
   // Engagement hooks
-  const { sendGG, isPending: isGGPending, isSuccess: isGGSuccess } = useGG();
-  const { reportMatch, isPending: isReportPending, isSuccess: isReportSuccess } = useReportMatch();
+  const { sendGG, isPending: isGGPending, isSuccess: isGGSuccess, error: ggError } = useGG();
+  const { reportMatch, isPending: isReportPending, isSuccess: isReportSuccess, error: reportError } = useReportMatch();
   const [ggSent, setGGSent] = useState(false);
-  const [score1, setScore1] = useState(5);
-  const [score2, setScore2] = useState(0);
 
   const isStaked = result?.isStaked || false;
   const isWinner = result?.isWinner || false;
   const isWinningWallet = addressesMatch(address, result?.winnerAddress);
-  const canClaim = isStaked && isWinner && result?.winnerSignature;
+  const hasResultProof = isStaked && result?.resultSignature && !isLegacyMatch(result);
+  const canClaim = hasResultProof && isWinner;
 
   const markGameClaimed = useCallback(async (txHash) => {
     const gameResponse = await fetch(`${BACKEND_URL}/games/${result.roomCode}`);
@@ -130,7 +131,7 @@ const GameOver = ({ savedUsername }) => {
   }, [result, navigate, notify, savedUsername]);
 
   const handleClaimPrize = useCallback(async () => {
-    if (!result?.roomCode || !result?.winnerSignature) return;
+    if (!hasResultProof) return;
     if (!isWinningWallet) {
       setClaimErrorMessage('Connect the wallet that won this match before claiming.');
       return;
@@ -139,30 +140,52 @@ const GameOver = ({ savedUsername }) => {
     setClaiming(true);
     setClaimErrorMessage(null);
     try {
-      const claimResult = await claimPrize(result.roomCode, result.winnerSignature);
+      const claimResult = await claimPrize({ ...result, finalScore });
 
       if (claimResult?.alreadyClaimed) {
         await markGameClaimed();
         setClaimed(true);
         setClaiming(false);
+      } else {
+        setActiveClaimHash(claimResult?.hash || null);
       }
     } catch (error) {
       console.error('Claim error:', error);
       setClaimErrorMessage(error.shortMessage || error.message || 'Claim failed');
       setClaiming(false);
     }
-  }, [result, claimPrize, isWinningWallet, markGameClaimed]);
+  }, [result, finalScore, hasResultProof, claimPrize, isWinningWallet, markGameClaimed]);
+
+  useEffect(() => {
+    if (isGGSuccess) {
+      setGGSent(true);
+      notify('GG sent', { type: 'success' });
+    }
+  }, [isGGSuccess, notify]);
+
+  useEffect(() => {
+    if (ggError) notify(ggError.shortMessage || ggError.message || 'GG failed', { type: 'error' });
+  }, [ggError, notify]);
+
+  useEffect(() => {
+    if (isReportSuccess) notify('Score reported', { type: 'success' });
+  }, [isReportSuccess, notify]);
+
+  useEffect(() => {
+    if (reportError) notify(reportError.shortMessage || reportError.message || 'Score report failed', { type: 'error' });
+  }, [reportError, notify]);
 
   // Handle claim success
   useEffect(() => {
-    if (isClaimSuccess && claiming) {
+    if (isClaimSuccess && claiming && claimTxHash && claimTxHash === activeClaimHash) {
       setClaimed(true);
       setClaiming(false);
+      setActiveClaimHash(null);
       markGameClaimed(claimTxHash).catch(error => {
         console.error('Failed to mark game as claimed:', error);
       });
     }
-  }, [isClaimSuccess, claiming, claimTxHash, markGameClaimed]);
+  }, [isClaimSuccess, claiming, claimTxHash, activeClaimHash, markGameClaimed]);
 
   // Handle claim error
   useEffect(() => {
@@ -284,11 +307,11 @@ const GameOver = ({ savedUsername }) => {
       )}
 
       {/* Engagement Buttons — GG + Report Score */}
-      {isConnected && result?.roomCode && (
+      {isConnected && hasResultProof && (
         <div style={{ margin: '16px 0', display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
           {!ggSent && !isGGSuccess && (
             <button
-              onClick={() => { sendGG(result.roomCode).catch(() => {}); setGGSent(true); }}
+              onClick={() => sendGG({ ...result, finalScore }).catch(() => {})}
               disabled={isGGPending}
               style={{
                 padding: '8px 18px', background: '#35D07F', color: '#000', border: 'none',
@@ -307,15 +330,11 @@ const GameOver = ({ savedUsername }) => {
 
           {!isReportSuccess ? (
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-              <input type="number" min="0" max="10" value={score1}
-                onChange={(e) => setScore1(parseInt(e.target.value) || 0)}
-                style={{ width: 40, padding: '6px', background: '#1a1a1a', border: '1px solid #35D07F', borderRadius: 4, color: '#fff', textAlign: 'center', fontFamily: 'inherit' }} />
-              <span style={{ color: '#888', fontSize: '0.7rem' }}>-</span>
-              <input type="number" min="0" max="10" value={score2}
-                onChange={(e) => setScore2(parseInt(e.target.value) || 0)}
-                style={{ width: 40, padding: '6px', background: '#1a1a1a', border: '1px solid #35D07F', borderRadius: 4, color: '#fff', textAlign: 'center', fontFamily: 'inherit' }} />
+              <span style={{ color: '#fdd040', fontSize: '0.7rem' }}>
+                {finalScore[0]} - {finalScore[1]}
+              </span>
               <button
-                onClick={() => reportMatch(result.roomCode, score1, score2).catch(() => {})}
+                onClick={() => reportMatch({ ...result, finalScore }).catch(() => {})}
                 disabled={isReportPending}
                 style={{
                   padding: '6px 12px', background: '#7b3fe4', color: '#fff', border: 'none',
@@ -323,7 +342,7 @@ const GameOver = ({ savedUsername }) => {
                   fontFamily: '"Press Start 2P", monospace', fontSize: '0.6rem'
                 }}
               >
-                {isReportPending ? '...' : 'Report'}
+                {isReportPending ? '...' : 'Report Score'}
               </button>
             </div>
           ) : (

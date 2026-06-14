@@ -28,6 +28,8 @@ contract PongEscrowTest is Test {
     uint256 public constant STAKE_AMOUNT_TOKEN = 10 ether; // 18-decimal tokens
     string  public constant ROOM_CODE = "ABC123";
     string  public constant ROOM_CODE2 = "XYZ789";
+    uint8 public constant FINAL_SCORE_1 = 5;
+    uint8 public constant FINAL_SCORE_2 = 3;
 
     MockToken public cUSD;
     MockToken public usdc;
@@ -284,10 +286,10 @@ contract PongEscrowTest is Test {
         assertEq(usdc.balanceOf(address(escrow)), STAKE_AMOUNT_TOKEN * 2);
 
         // Winner claims
-        bytes memory signature = _signWinner(ROOM_CODE, player1);
+        bytes memory signature = _signResult(ROOM_CODE, player1);
 
         vm.prank(player1);
-        escrow.claimPrize(ROOM_CODE, signature);
+        _claimPrize(ROOM_CODE, player1, signature);
 
         // Player1 started with 1000 ether, staked 10, won 20 → 1010 ether
         assertEq(usdc.balanceOf(player1), 1000 ether + STAKE_AMOUNT_TOKEN);
@@ -333,7 +335,7 @@ contract PongEscrowTest is Test {
         vm.prank(player2);
         escrow.stakeAsPlayer2{value: STAKE_AMOUNT_NATIVE}(ROOM_CODE, 0);
 
-        bytes memory signature = _signWinner(ROOM_CODE, player1);
+        bytes memory signature = _signResult(ROOM_CODE, player1);
 
         uint256 balanceBefore = player1.balance;
 
@@ -341,7 +343,7 @@ contract PongEscrowTest is Test {
         vm.expectEmit(true, true, true, false);
         emit PrizeClaimed(ROOM_CODE, player1, NATIVE_TOKEN, STAKE_AMOUNT_NATIVE * 2, block.timestamp);
 
-        escrow.claimPrize(ROOM_CODE, signature);
+        _claimPrize(ROOM_CODE, player1, signature);
 
         uint256 balanceAfter = player1.balance;
         assertEq(balanceAfter - balanceBefore, STAKE_AMOUNT_NATIVE * 2);
@@ -365,8 +367,8 @@ contract PongEscrowTest is Test {
         bytes memory badSignature = abi.encodePacked(r, s, v);
 
         vm.prank(player1);
-        vm.expectRevert("Invalid signature");
-        escrow.claimPrize(ROOM_CODE, badSignature);
+        vm.expectRevert("Invalid result signature");
+        _claimPrize(ROOM_CODE, player1, badSignature);
     }
 
     function test_Native_ClaimPrizeRevertsIfAlreadyClaimed() public {
@@ -376,14 +378,14 @@ contract PongEscrowTest is Test {
         vm.prank(player2);
         escrow.stakeAsPlayer2{value: STAKE_AMOUNT_NATIVE}(ROOM_CODE, 0);
 
-        bytes memory signature = _signWinner(ROOM_CODE, player1);
+        bytes memory signature = _signResult(ROOM_CODE, player1);
 
         vm.prank(player1);
-        escrow.claimPrize(ROOM_CODE, signature);
+        _claimPrize(ROOM_CODE, player1, signature);
 
         vm.prank(player1);
-        vm.expectRevert("Match not ready for claiming");
-        escrow.claimPrize(ROOM_CODE, signature);
+        vm.expectRevert("Prize already claimed");
+        _claimPrize(ROOM_CODE, player1, signature);
     }
 
     function test_Native_ClaimPrizeRevertsIfLoserTriesToClaim() public {
@@ -393,11 +395,11 @@ contract PongEscrowTest is Test {
         vm.prank(player2);
         escrow.stakeAsPlayer2{value: STAKE_AMOUNT_NATIVE}(ROOM_CODE, 0);
 
-        bytes memory signature = _signWinner(ROOM_CODE, player1);
+        bytes memory signature = _signResult(ROOM_CODE, player1);
 
         vm.prank(player2);
-        vm.expectRevert("Invalid signature");
-        escrow.claimPrize(ROOM_CODE, signature);
+        vm.expectRevert("Only winner can claim");
+        _claimPrize(ROOM_CODE, player1, signature);
     }
 
     // ============ Prize Claiming Tests (ERC-20) ============
@@ -409,12 +411,12 @@ contract PongEscrowTest is Test {
         vm.prank(player2);
         escrow.stakeAsPlayer2(ROOM_CODE, STAKE_AMOUNT_TOKEN);
 
-        bytes memory signature = _signWinner(ROOM_CODE, player1);
+        bytes memory signature = _signResult(ROOM_CODE, player1);
 
         uint256 balanceBefore = cUSD.balanceOf(player1);
 
         vm.prank(player1);
-        escrow.claimPrize(ROOM_CODE, signature);
+        _claimPrize(ROOM_CODE, player1, signature);
 
         uint256 balanceAfter = cUSD.balanceOf(player1);
         assertEq(balanceAfter - balanceBefore, STAKE_AMOUNT_TOKEN * 2);
@@ -434,9 +436,9 @@ contract PongEscrowTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(wrongKey, ethSignedHash);
         bytes memory badSignature = abi.encodePacked(r, s, v);
 
-        vm.prank(player2);
-        vm.expectRevert("Invalid signature");
-        escrow.claimPrize(ROOM_CODE, badSignature);
+        vm.prank(player1);
+        vm.expectRevert("Invalid result signature");
+        _claimPrize(ROOM_CODE, player1, badSignature);
     }
 
     // ============ Refund Tests (Native) ============
@@ -720,10 +722,10 @@ contract PongEscrowTest is Test {
 
         escrow.pause();
 
-        bytes memory signature = _signWinner(ROOM_CODE, player1);
+        bytes memory signature = _signResult(ROOM_CODE, player1);
 
         vm.prank(player1);
-        escrow.claimPrize(ROOM_CODE, signature); // Should work even when paused
+        _claimPrize(ROOM_CODE, player1, signature); // Should work even when paused
 
         assertEq(uint(escrow.getMatchStatus(ROOM_CODE)), uint(PongEscrow.MatchStatus.COMPLETED));
     }
@@ -872,15 +874,12 @@ contract PongEscrowTest is Test {
 
     function test_GG() public {
         _setupCompletedMatch();
-        bytes memory sig = _signWinner(ROOM_CODE, player1);
-
-        vm.prank(player1);
-        escrow.claimPrize(ROOM_CODE, sig);
+        bytes memory sig = _signResult(ROOM_CODE, player1);
 
         vm.prank(player1);
         vm.expectEmit(true, true, false, false);
         emit GGSent(ROOM_CODE, player1, 1, block.timestamp);
-        escrow.gg(ROOM_CODE);
+        _gg(ROOM_CODE, player1, sig);
 
         assertEq(escrow.ggCount(player1), 1);
         assertTrue(escrow.ggSent(ROOM_CODE, player1));
@@ -888,26 +887,21 @@ contract PongEscrowTest is Test {
 
     function test_GGFromLoser() public {
         _setupCompletedMatch();
-        bytes memory sig = _signWinner(ROOM_CODE, player1);
-
-        vm.prank(player1);
-        escrow.claimPrize(ROOM_CODE, sig);
+        bytes memory sig = _signResult(ROOM_CODE, player1);
 
         vm.prank(player2);
-        escrow.gg(ROOM_CODE);
+        _gg(ROOM_CODE, player1, sig);
 
         assertEq(escrow.ggCount(player2), 1);
     }
 
     function test_GGRevertsIfNotParticipant() public {
         _setupCompletedMatch();
-        bytes memory sig = _signWinner(ROOM_CODE, player1);
-        vm.prank(player1);
-        escrow.claimPrize(ROOM_CODE, sig);
+        bytes memory sig = _signResult(ROOM_CODE, player1);
 
         vm.prank(player3);
         vm.expectRevert("Not a participant");
-        escrow.gg(ROOM_CODE);
+        _gg(ROOM_CODE, player1, sig);
     }
 
     function test_GGRevertsIfMatchNotCompleted() public {
@@ -916,21 +910,41 @@ contract PongEscrowTest is Test {
 
         vm.prank(player1);
         vm.expectRevert("Match not completed");
-        escrow.gg(ROOM_CODE);
+        _gg(ROOM_CODE, player1, hex"00");
     }
 
     function test_GGRevertsDoubleSend() public {
         _setupCompletedMatch();
-        bytes memory sig = _signWinner(ROOM_CODE, player1);
-        vm.prank(player1);
-        escrow.claimPrize(ROOM_CODE, sig);
+        bytes memory sig = _signResult(ROOM_CODE, player1);
 
         vm.prank(player1);
-        escrow.gg(ROOM_CODE);
+        _gg(ROOM_CODE, player1, sig);
 
         vm.prank(player1);
         vm.expectRevert("Already sent GG");
-        escrow.gg(ROOM_CODE);
+        _gg(ROOM_CODE, player1, sig);
+    }
+
+    function test_GGAfterPrizeClaim() public {
+        _setupCompletedMatch();
+        bytes memory sig = _signResult(ROOM_CODE, player1);
+
+        vm.prank(player1);
+        _claimPrize(ROOM_CODE, player1, sig);
+
+        vm.prank(player2);
+        _gg(ROOM_CODE, player1, sig);
+
+        assertEq(escrow.ggCount(player2), 1);
+    }
+
+    function test_GGRevertsWithModifiedWinner() public {
+        _setupCompletedMatch();
+        bytes memory sig = _signResult(ROOM_CODE, player1);
+
+        vm.prank(player1);
+        vm.expectRevert("Invalid result signature");
+        _gg(ROOM_CODE, player2, sig);
     }
 
     // ============ Engagement: Practice Mode Tests ============
@@ -1088,14 +1102,12 @@ contract PongEscrowTest is Test {
 
     function test_ReportMatch() public {
         _setupCompletedMatch();
-        bytes memory sig = _signWinner(ROOM_CODE, player1);
-        vm.prank(player1);
-        escrow.claimPrize(ROOM_CODE, sig);
+        bytes memory sig = _signResult(ROOM_CODE, player1);
 
         vm.prank(player1);
         vm.expectEmit(true, true, false, true);
-        emit MatchReported(ROOM_CODE, player1, 5, 3, block.timestamp);
-        escrow.reportMatch(ROOM_CODE, 5, 3);
+        emit MatchReported(ROOM_CODE, player1, FINAL_SCORE_1, FINAL_SCORE_2, block.timestamp);
+        _reportMatch(ROOM_CODE, player1, sig);
 
         (uint8 s1, uint8 s2, address rep, uint256 at) = escrow.matchScores(ROOM_CODE);
         assertEq(s1, 5);
@@ -1105,13 +1117,11 @@ contract PongEscrowTest is Test {
 
     function test_ReportMatchRevertsNotParticipant() public {
         _setupCompletedMatch();
-        bytes memory sig = _signWinner(ROOM_CODE, player1);
-        vm.prank(player1);
-        escrow.claimPrize(ROOM_CODE, sig);
+        bytes memory sig = _signResult(ROOM_CODE, player1);
 
         vm.prank(player3);
         vm.expectRevert("Not a participant");
-        escrow.reportMatch(ROOM_CODE, 5, 3);
+        _reportMatch(ROOM_CODE, player1, sig);
     }
 
     function test_ReportMatchRevertsNotCompleted() public {
@@ -1120,21 +1130,81 @@ contract PongEscrowTest is Test {
 
         vm.prank(player1);
         vm.expectRevert("Match not completed");
-        escrow.reportMatch(ROOM_CODE, 5, 3);
+        _reportMatch(ROOM_CODE, player1, hex"00");
     }
 
     function test_ReportMatchRevertsAlreadyReported() public {
         _setupCompletedMatch();
-        bytes memory sig = _signWinner(ROOM_CODE, player1);
-        vm.prank(player1);
-        escrow.claimPrize(ROOM_CODE, sig);
+        bytes memory sig = _signResult(ROOM_CODE, player1);
 
         vm.prank(player1);
-        escrow.reportMatch(ROOM_CODE, 5, 3);
+        _reportMatch(ROOM_CODE, player1, sig);
 
         vm.prank(player2);
         vm.expectRevert("Already reported");
-        escrow.reportMatch(ROOM_CODE, 5, 3);
+        _reportMatch(ROOM_CODE, player1, sig);
+    }
+
+    function test_ReportMatchAfterPrizeClaim() public {
+        _setupCompletedMatch();
+        bytes memory sig = _signResult(ROOM_CODE, player1);
+
+        vm.prank(player1);
+        _claimPrize(ROOM_CODE, player1, sig);
+
+        vm.prank(player2);
+        _reportMatch(ROOM_CODE, player1, sig);
+
+        (, , address reporter, ) = escrow.matchScores(ROOM_CODE);
+        assertEq(reporter, player2);
+    }
+
+    function test_ReportMatchRejectsModifiedScore() public {
+        _setupCompletedMatch();
+        bytes memory sig = _signResult(ROOM_CODE, player1);
+
+        vm.prank(player1);
+        vm.expectRevert("Invalid result signature");
+        escrow.reportMatch(
+            ROOM_CODE,
+            FINAL_SCORE_1,
+            FINAL_SCORE_2 + 1,
+            player1,
+            PongEscrow.ResultReason.SCORE,
+            sig
+        );
+    }
+
+    function test_ResultProofCannotReplayAcrossContracts() public {
+        _setupCompletedMatch();
+        bytes memory sig = _signResult(ROOM_CODE, player1);
+        PongEscrow otherEscrow = new PongEscrow(backendOracle);
+
+        vm.prank(player1);
+        otherEscrow.stakeAsPlayer1{value: STAKE_AMOUNT_NATIVE}(ROOM_CODE, NATIVE_TOKEN, 0);
+        vm.prank(player2);
+        otherEscrow.stakeAsPlayer2{value: STAKE_AMOUNT_NATIVE}(ROOM_CODE, 0);
+
+        vm.prank(player1);
+        vm.expectRevert("Invalid result signature");
+        otherEscrow.claimPrize(
+            ROOM_CODE,
+            player1,
+            FINAL_SCORE_1,
+            FINAL_SCORE_2,
+            PongEscrow.ResultReason.SCORE,
+            sig
+        );
+    }
+
+    function test_ResultProofCannotReplayAcrossChains() public {
+        _setupCompletedMatch();
+        bytes memory sig = _signResult(ROOM_CODE, player1);
+
+        vm.chainId(block.chainid + 1);
+        vm.prank(player1);
+        vm.expectRevert("Invalid result signature");
+        _claimPrize(ROOM_CODE, player1, sig);
     }
 
     // ============ Helper Functions ============
@@ -1146,11 +1216,69 @@ contract PongEscrowTest is Test {
         escrow.stakeAsPlayer2{value: STAKE_AMOUNT_NATIVE}(ROOM_CODE, 0);
     }
 
-    function _signWinner(string memory roomCode, address winner) internal view returns (bytes memory) {
-        bytes32 messageHash = keccak256(abi.encodePacked(roomCode, winner));
+    function _signResult(string memory roomCode, address winner) internal view returns (bytes memory) {
+        bytes32 messageHash = keccak256(
+            abi.encode(
+                block.chainid,
+                address(escrow),
+                "MATCH_RESULT",
+                roomCode,
+                player1,
+                player2,
+                winner,
+                FINAL_SCORE_1,
+                FINAL_SCORE_2,
+                PongEscrow.ResultReason.SCORE
+            )
+        );
         bytes32 ethSignedHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(backendPrivateKey, ethSignedHash);
         return abi.encodePacked(r, s, v);
+    }
+
+    function _claimPrize(
+        string memory roomCode,
+        address winner,
+        bytes memory signature
+    ) internal {
+        escrow.claimPrize(
+            roomCode,
+            winner,
+            FINAL_SCORE_1,
+            FINAL_SCORE_2,
+            PongEscrow.ResultReason.SCORE,
+            signature
+        );
+    }
+
+    function _gg(
+        string memory roomCode,
+        address winner,
+        bytes memory signature
+    ) internal {
+        escrow.gg(
+            roomCode,
+            winner,
+            FINAL_SCORE_1,
+            FINAL_SCORE_2,
+            PongEscrow.ResultReason.SCORE,
+            signature
+        );
+    }
+
+    function _reportMatch(
+        string memory roomCode,
+        address winner,
+        bytes memory signature
+    ) internal {
+        escrow.reportMatch(
+            roomCode,
+            FINAL_SCORE_1,
+            FINAL_SCORE_2,
+            winner,
+            PongEscrow.ResultReason.SCORE,
+            signature
+        );
     }
 
     function _abandonedRefundHash(string memory roomCode) internal view returns (bytes32) {

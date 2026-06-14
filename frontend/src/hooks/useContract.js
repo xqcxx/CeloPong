@@ -4,6 +4,7 @@ import { parseEther, parseUnits, formatEther, formatUnits, erc20Abi } from 'viem
 import { PONG_ESCROW_ADDRESS, PONG_ESCROW_ABI } from '../contracts/PongEscrow';
 import { isNativeToken, CURRENCIES } from '../config/currencies';
 import { ENVIRONMENT, IS_MAINNET } from '../config/env';
+import { getResultProofArgs } from '../utils/resultProof';
 
 function getRpcUrls(chain) {
   return chain?.rpcUrls?.default?.http || chain?.rpcUrls?.public?.http || [];
@@ -271,17 +272,19 @@ export function useClaimPrize() {
   const { data: hash, writeContractAsync, isPending, error } = useWriteContract();
   const { data: receipt, isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
-  const claimPrize = async (roomCode, signature, feeCurrencyAddress) => {
+  const claimPrize = async (result, feeCurrencyAddress) => {
     try {
       if (!walletAddress || !publicClient) {
         throw new Error('Connect the winning wallet before claiming.');
       }
 
+      const proofArgs = getResultProofArgs(result);
+      const roomCode = result.roomCode;
       const txOpts = {
         address: PONG_ESCROW_ADDRESS,
         abi: PONG_ESCROW_ABI,
         functionName: 'claimPrize',
-        args: [roomCode, signature],
+        args: proofArgs,
       };
       if (feeCurrencyAddress) {
         txOpts.feeCurrency = feeCurrencyAddress;
@@ -471,13 +474,13 @@ export function usePracticeMode() {
 // ============ Engagement: GG ============
 
 export function useGG() {
-  const { data: hash, writeContract, isPending, error } = useWriteContract();
+  const { data: hash, writeContractAsync, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
-  const sendGG = async (roomCode) => {
-    await writeContract({
+  const sendGG = async (result) => {
+    return writeContractAsync({
       address: PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
-      functionName: 'gg', args: [roomCode],
+      functionName: 'gg', args: getResultProofArgs(result),
     });
   };
 
@@ -518,13 +521,14 @@ export function useAcceptChallenge() {
 // ============ Engagement: Report Match ============
 
 export function useReportMatch() {
-  const { data: hash, writeContract, isPending, error } = useWriteContract();
+  const { data: hash, writeContractAsync, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
-  const reportMatch = async (roomCode, score1, score2) => {
-    await writeContract({
+  const reportMatch = async (result) => {
+    const [roomCode, winner, score1, score2, reason, signature] = getResultProofArgs(result);
+    return writeContractAsync({
       address: PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
-      functionName: 'reportMatch', args: [roomCode, score1, score2],
+      functionName: 'reportMatch', args: [roomCode, score1, score2, winner, reason, signature],
     });
   };
 

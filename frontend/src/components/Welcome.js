@@ -644,11 +644,6 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
             📊 History
           </button>
         )}
-        {isConnected && (
-          <button onClick={() => navigate('/my-wins')} className="my-wins-btn">
-            🏆 My Wins
-          </button>
-        )}
       </div>
 
       {/* Engagement Buttons */}

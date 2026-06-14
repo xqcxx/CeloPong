@@ -1,5 +1,43 @@
 const { ethers } = require('ethers');
 
+const RESULT_REASON_CODES = Object.freeze({
+  score: 0,
+  forfeit: 1,
+  disconnect_timeout: 2
+});
+
+function buildResultHash({
+  chainId,
+  contractAddress,
+  roomCode,
+  player1Address,
+  player2Address,
+  winnerAddress,
+  score1,
+  score2,
+  resultReason
+}) {
+  const reason = RESULT_REASON_CODES[resultReason];
+  if (reason === undefined) throw new Error(`Unsupported result reason: ${resultReason}`);
+
+  const encoded = ethers.AbiCoder.defaultAbiCoder().encode(
+    ['uint256', 'address', 'string', 'string', 'address', 'address', 'address', 'uint8', 'uint8', 'uint8'],
+    [
+      BigInt(chainId),
+      ethers.getAddress(contractAddress),
+      'MATCH_RESULT',
+      roomCode,
+      ethers.getAddress(player1Address),
+      ethers.getAddress(player2Address),
+      ethers.getAddress(winnerAddress),
+      score1,
+      score2,
+      reason
+    ]
+  );
+  return ethers.keccak256(encoded);
+}
+
 class SignatureService {
   constructor() {
     this.wallet = null;
@@ -24,46 +62,21 @@ class SignatureService {
     }
   }
 
-  /**
-   * Sign winner proof for claiming prize
-   * IMPORTANT: This MUST match the smart contract's signature verification:
-   * keccak256(abi.encodePacked(roomCode, winnerAddress))
-   *
-   * @param {string} roomCode - The game room code
-   * @param {string} winnerAddress - Ethereum address of the winner
-   * @param {string} stakeAmount - Stake amount (not used in signature, but logged)
-   * @returns {Promise<string>} - Signature hex string
-   */
-  async signWinner(roomCode, winnerAddress, stakeAmount) {
+  async signResult(result) {
     if (!this.wallet) {
       throw new Error('Signing wallet not initialized. Check SIGNING_WALLET_PRIVATE_KEY in .env');
     }
 
-    try {
-      // Pack the data exactly as the smart contract expects:
-      // keccak256(abi.encodePacked(roomCode, winnerAddress))
-      const messageHash = ethers.solidityPackedKeccak256(
-        ['string', 'address'],
-        [roomCode, winnerAddress]
-      );
-
-      // Sign the message hash (this automatically applies EIP-191 prefix)
-      const signature = await this.wallet.signMessage(ethers.getBytes(messageHash));
-
-      console.log('✅ Winner signature generated:', {
-        roomCode,
-        winner: winnerAddress,
-        stakeAmount,
-        messageHash,
-        signaturePreview: signature.slice(0, 10) + '...',
-        signerAddress: this.wallet.address
-      });
-
-      return signature;
-    } catch (error) {
-      console.error('❌ Failed to sign winner proof:', error);
-      throw error;
-    }
+    const messageHash = buildResultHash(result);
+    const signature = await this.wallet.signMessage(ethers.getBytes(messageHash));
+    console.log('✅ Result signature generated:', {
+      roomCode: result.roomCode,
+      winner: result.winnerAddress,
+      resultReason: result.resultReason,
+      messageHash,
+      signerAddress: this.wallet.address
+    });
+    return signature;
   }
 
   async signAbandonedRefund(roomCode, player1Address, player2Address, contractAddress, chainId) {
@@ -105,4 +118,5 @@ class SignatureService {
 
 // Export singleton instance
 module.exports = new SignatureService();
-
+module.exports.RESULT_REASON_CODES = RESULT_REASON_CODES;
+module.exports.buildResultHash = buildResultHash;

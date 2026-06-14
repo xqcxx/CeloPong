@@ -96,6 +96,10 @@ export const PONG_ESCROW_ABI = [
   {
     inputs: [
       { internalType: 'string', name: 'roomCode', type: 'string' },
+      { internalType: 'address', name: 'winner', type: 'address' },
+      { internalType: 'uint8', name: 'score1', type: 'uint8' },
+      { internalType: 'uint8', name: 'score2', type: 'uint8' },
+      { internalType: 'uint8', name: 'reason', type: 'uint8' },
       { internalType: 'bytes', name: 'signature', type: 'bytes' },
     ],
     name: 'claimPrize',
@@ -229,7 +233,14 @@ export const PONG_ESCROW_ABI = [
   },
   // Engagement — gg
   {
-    inputs: [{ internalType: 'string', name: 'roomCode', type: 'string' }],
+    inputs: [
+      { internalType: 'string', name: 'roomCode', type: 'string' },
+      { internalType: 'address', name: 'winner', type: 'address' },
+      { internalType: 'uint8', name: 'score1', type: 'uint8' },
+      { internalType: 'uint8', name: 'score2', type: 'uint8' },
+      { internalType: 'uint8', name: 'reason', type: 'uint8' },
+      { internalType: 'bytes', name: 'signature', type: 'bytes' },
+    ],
     name: 'gg',
     outputs: [],
     stateMutability: 'nonpayable',
@@ -269,6 +280,9 @@ export const PONG_ESCROW_ABI = [
       { internalType: 'string', name: 'roomCode', type: 'string' },
       { internalType: 'uint8', name: 'score1', type: 'uint8' },
       { internalType: 'uint8', name: 'score2', type: 'uint8' },
+      { internalType: 'address', name: 'winner', type: 'address' },
+      { internalType: 'uint8', name: 'reason', type: 'uint8' },
+      { internalType: 'bytes', name: 'signature', type: 'bytes' },
     ],
     name: 'reportMatch',
     outputs: [],
