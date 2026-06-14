@@ -1,10 +1,13 @@
 import { createAppKit } from '@reown/appkit/react';
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi';
 import { celo, celoSepolia } from '@reown/appkit/networks';
+import { IS_MAINNET } from './env';
 
 const projectId = process.env.REACT_APP_WALLETCONNECT_PROJECT_ID || 'YOUR_PROJECT_ID';
 
 const inMiniPay = typeof window !== 'undefined' && window.ethereum?.isMiniPay === true;
+const defaultNetwork = IS_MAINNET ? celo : celoSepolia;
+const networks = IS_MAINNET ? [celo, celoSepolia] : [celoSepolia, celo];
 
 const metadata = {
   name: 'PONG-IT',
@@ -14,14 +17,15 @@ const metadata = {
 };
 
 export const wagmiAdapter = new WagmiAdapter({
-  networks: [celoSepolia, celo],
+  networks,
   projectId,
-  defaultNetwork: celoSepolia,
+  defaultNetwork,
 });
 
 createAppKit({
   adapters: [wagmiAdapter],
-  networks: [celoSepolia, celo],
+  networks,
+  defaultNetwork,
   projectId,
   metadata,
   themeMode: 'dark', // default — MiniPay override in Web3Provider

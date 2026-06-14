@@ -1,7 +1,69 @@
-import { useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
+import { useEffect } from 'react';
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
 import { parseEther, parseUnits, formatEther, formatUnits, erc20Abi } from 'viem';
 import { PONG_ESCROW_ADDRESS, PONG_ESCROW_ABI } from '../contracts/PongEscrow';
 import { isNativeToken, CURRENCIES } from '../config/currencies';
+import { ENVIRONMENT, IS_MAINNET } from '../config/env';
+
+function getRpcUrls(chain) {
+  return chain?.rpcUrls?.default?.http || chain?.rpcUrls?.public?.http || [];
+}
+
+async function logStakeTransaction(label, phase, details) {
+  let providerChainId = null;
+
+  try {
+    providerChainId = window.ethereum
+      ? Number(await window.ethereum.request({ method: 'eth_chainId' }))
+      : null;
+  } catch (error) {
+    console.warn(`[PONG-IT][${label}] Unable to query injected provider chain`, error);
+  }
+
+  console.group(`[PONG-IT][${label}] ${phase}`);
+  console.table({
+    environment: ENVIRONMENT,
+    expectedChainId: IS_MAINNET ? 42220 : 11142220,
+    walletChainId: details.chainId ?? null,
+    providerChainId,
+    walletAddress: details.walletAddress ?? null,
+    contractAddress: PONG_ESCROW_ADDRESS,
+    transactionTo: details.to ?? PONG_ESCROW_ADDRESS,
+    roomCode: details.roomCode,
+    currency: details.currency,
+    stakeAmount: details.stakeAmount,
+    contractAmount: details.contractAmount?.toString?.() ?? details.contractAmount ?? null,
+    transactionValue: details.value?.toString?.() ?? details.value ?? '0',
+    transactionHash: details.hash ?? 'pending'
+  });
+  console.log('Configured chain RPC URLs:', getRpcUrls(details.chain));
+  console.log('Raw transaction details:', details);
+  console.groupEnd();
+}
+
+function useStakeReceiptDiagnostics(label, hash, receipt, chain) {
+  useEffect(() => {
+    if (!hash || !receipt) {
+      return;
+    }
+
+    console.group(`[PONG-IT][${label}] transaction confirmed`);
+    console.table({
+      environment: ENVIRONMENT,
+      chainId: chain?.id ?? null,
+      chainName: chain?.name ?? null,
+      contractAddress: PONG_ESCROW_ADDRESS,
+      transactionTo: receipt.to ?? null,
+      transactionFrom: receipt.from ?? null,
+      transactionHash: receipt.transactionHash || hash,
+      blockNumber: receipt.blockNumber?.toString?.() ?? receipt.blockNumber,
+      status: receipt.status
+    });
+    console.log('Configured chain RPC URLs:', getRpcUrls(chain));
+    console.log('Raw transaction receipt:', receipt);
+    console.groupEnd();
+  }, [label, hash, receipt, chain]);
+}
 
 // ============ View Hooks ============
 
@@ -74,8 +136,10 @@ export function useApproveToken() {
 // ============ Stake as Player 1 (Create Match) ============
 
 export function useStakeAsPlayer1() {
-  const { data: hash, writeContract, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { address: walletAddress, chain, chainId } = useAccount();
+  const { data: hash, writeContractAsync, isPending, error } = useWriteContract();
+  const { data: receipt, isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useStakeReceiptDiagnostics('stakeAsPlayer1', hash, receipt, chain);
 
   const stakeAsPlayer1 = async (roomCode, currency, stakeAmount, feeCurrencyAddress) => {
     try {
@@ -98,21 +162,49 @@ export function useStakeAsPlayer1() {
         txOpts.feeCurrency = feeCurrencyAddress;
       }
 
-      await writeContract(txOpts);
+      await logStakeTransaction('stakeAsPlayer1', 'wallet request', {
+        chain,
+        chainId,
+        walletAddress,
+        roomCode,
+        currency: currency.symbol,
+        stakeAmount,
+        contractAmount: amount,
+        value: txOpts.value,
+        to: txOpts.address
+      });
+
+      const submittedHash = await writeContractAsync(txOpts);
+      await logStakeTransaction('stakeAsPlayer1', 'transaction submitted', {
+        chain,
+        chainId,
+        walletAddress,
+        roomCode,
+        currency: currency.symbol,
+        stakeAmount,
+        contractAmount: amount,
+        value: txOpts.value,
+        to: txOpts.address,
+        hash: submittedHash
+      });
+
+      return submittedHash;
     } catch (err) {
       console.error('Error staking as player 1:', err);
       throw err;
     }
   };
 
-  return { stakeAsPlayer1, hash, isPending, isConfirming, isSuccess, error };
+  return { stakeAsPlayer1, hash, receipt, isPending, isConfirming, isSuccess, error };
 }
 
 // ============ Stake as Player 2 (Join Match) ============
 
 export function useStakeAsPlayer2() {
-  const { data: hash, writeContract, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { address: walletAddress, chain, chainId } = useAccount();
+  const { data: hash, writeContractAsync, isPending, error } = useWriteContract();
+  const { data: receipt, isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useStakeReceiptDiagnostics('stakeAsPlayer2', hash, receipt, chain);
 
   const stakeAsPlayer2 = async (roomCode, currency, stakeAmount, feeCurrencyAddress) => {
     try {
@@ -135,14 +227,40 @@ export function useStakeAsPlayer2() {
         txOpts.feeCurrency = feeCurrencyAddress;
       }
 
-      await writeContract(txOpts);
+      await logStakeTransaction('stakeAsPlayer2', 'wallet request', {
+        chain,
+        chainId,
+        walletAddress,
+        roomCode,
+        currency: currency.symbol,
+        stakeAmount,
+        contractAmount: amount,
+        value: txOpts.value,
+        to: txOpts.address
+      });
+
+      const submittedHash = await writeContractAsync(txOpts);
+      await logStakeTransaction('stakeAsPlayer2', 'transaction submitted', {
+        chain,
+        chainId,
+        walletAddress,
+        roomCode,
+        currency: currency.symbol,
+        stakeAmount,
+        contractAmount: amount,
+        value: txOpts.value,
+        to: txOpts.address,
+        hash: submittedHash
+      });
+
+      return submittedHash;
     } catch (err) {
       console.error('Error staking as player 2:', err);
       throw err;
     }
   };
 
-  return { stakeAsPlayer2, hash, isPending, isConfirming, isSuccess, error };
+  return { stakeAsPlayer2, hash, receipt, isPending, isConfirming, isSuccess, error };
 }
 
 // ============ Claim Prize ============
