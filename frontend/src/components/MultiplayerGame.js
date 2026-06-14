@@ -50,7 +50,7 @@ const MultiplayerGame = ({ username }) => {
   const keyboardIntervalRef = useRef(null);
 
   // Web3 hooks
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chainId } = useAccount();
   const {
     stakeAsPlayer2,
     hash: player2StakingTxHash,
@@ -259,7 +259,8 @@ const MultiplayerGame = ({ username }) => {
       socketRef.current?.emit('player2StakeCompleted', {
         roomCode: stakingData.roomCode,
         txHash: lastPlayer2StakeTxHash,
-        playerAddress: address
+        playerAddress: address,
+        chainId
       });
       return;
     }
@@ -277,7 +278,7 @@ const MultiplayerGame = ({ username }) => {
       console.error('Error initiating Player2 stake:', error);
       setIsPlayer2Staking(false);
     }
-  }, [isConnected, stakingData, lastPlayer2StakeTxHash, address, stakeAsPlayer2, approveToken, notify]);
+  }, [isConnected, stakingData, lastPlayer2StakeTxHash, address, chainId, stakeAsPlayer2, approveToken, notify]);
 
   // Handle successful Player2 staking transaction
   useEffect(() => {
@@ -295,11 +296,12 @@ const MultiplayerGame = ({ username }) => {
         socketRef.current.emit('player2StakeCompleted', {
           roomCode: stakingData.roomCode,
           txHash: player2StakingTxHash,
-          playerAddress: address
+          playerAddress: address,
+          chainId
         });
       }
     }
-  }, [isPlayer2StakingSuccess, player2StakingTxHash, stakingData, address]);
+  }, [isPlayer2StakingSuccess, player2StakingTxHash, stakingData, address, chainId]);
 
   // Handle Player2 staking errors
   useEffect(() => {

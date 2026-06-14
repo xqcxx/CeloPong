@@ -196,7 +196,7 @@ class MultiplayerHandler {
     this.startGame(roomCode);
   }
 
-  async handlePlayer2StakeCompleted(socket, { roomCode, txHash, playerAddress }) {
+  async handlePlayer2StakeCompleted(socket, { roomCode, txHash, playerAddress, chainId }) {
     const room = this.roomManager.getRoom(roomCode);
     if (!room) {
       socket.emit('error', { message: 'Room not found' });
@@ -212,7 +212,8 @@ class MultiplayerHandler {
       const verifiedStake = await escrowVerificationService.verifyPlayer2Stake({
         roomCode,
         txHash,
-        playerAddress
+        playerAddress,
+        chainId
       });
       const gameRecord = await Game.findOne({ roomCode });
       if (!gameRecord?.isStaked) {

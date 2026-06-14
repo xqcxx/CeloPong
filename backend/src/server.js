@@ -174,6 +174,21 @@ app.get('/health', (req, res) => {
   });
 });
 
+app.get('/health/chain', async (req, res) => {
+  try {
+    const diagnostics = await escrowVerificationService.getChainDiagnostics();
+    res.json({
+      status: 'ok',
+      ...diagnostics
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: 'error',
+      error: error.message
+    });
+  }
+});
+
 // ============ PLAYER ENDPOINTS ============
 
 // Get all players
