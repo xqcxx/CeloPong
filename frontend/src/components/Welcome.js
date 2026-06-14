@@ -692,14 +692,14 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
 
       <div className="menu">
         <div className="game-modes">
-          <button onClick={handleStartGame} className="mode-button quick-match">
+          {/* <button onClick={handleStartGame} className="mode-button quick-match">
             <span className="button-icon">⚡</span>
             <span className="button-text">Quick Match</span>
-          </button>
-          <button onClick={handleCreateRoom} className="mode-button create-room">
+          </button> */}
+          {/* <button onClick={handleCreateRoom} className="mode-button create-room">
             <span className="button-icon">➕</span>
             <span className="button-text">Create Room</span>
-          </button>
+          </button> */}
           <button onClick={handleJoinRoom} className="mode-button join-room">
             <span className="button-icon">🔗</span>
             <span className="button-text">Join Room</span>
