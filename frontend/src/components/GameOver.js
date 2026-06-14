@@ -15,6 +15,8 @@ const REMATCH_DECLINED_EVENT = 'rematchDeclined';
 const GAME_START_EVENT = 'gameStart';
 const DEFAULT_SCORE = [0, 0];
 const WAITING_TEXT = 'Waiting for opponent...';
+const addressesMatch = (first, second) =>
+  Boolean(first && second && first.toLowerCase() === second.toLowerCase());
 
 const GameOver = ({ savedUsername }) => {
   const location = useLocation();
@@ -36,7 +38,6 @@ const GameOver = ({ savedUsername }) => {
     claimPrize,
     hash: claimTxHash,
     isPending: isClaimPending,
-    isConfirming: isClaimConfirming,
     isSuccess: isClaimSuccess,
     error: claimError
   } = useClaimPrize();
@@ -53,7 +54,26 @@ const GameOver = ({ savedUsername }) => {
 
   const isStaked = result?.isStaked || false;
   const isWinner = result?.isWinner || false;
-  const canClaim = isStaked && isWinner && result?.winnerSignature && !claimed;
+  const isWinningWallet = addressesMatch(address, result?.winnerAddress);
+  const canClaim = isStaked && isWinner && result?.winnerSignature;
+
+  const markGameClaimed = useCallback(async (txHash) => {
+    const gameResponse = await fetch(`${BACKEND_URL}/games/${result.roomCode}`);
+    if (!gameResponse.ok) {
+      throw new Error('Prize was claimed, but the game record could not be found.');
+    }
+
+    const game = await gameResponse.json();
+    const claimedResponse = await fetch(`${BACKEND_URL}/games/${game._id}/claimed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ txHash })
+    });
+
+    if (!claimedResponse.ok && claimedResponse.status !== 400) {
+      throw new Error('Prize was claimed, but the game record could not be updated.');
+    }
+  }, [result?.roomCode]);
 
   useEffect(() => {
     if (!result) {
@@ -111,36 +131,38 @@ const GameOver = ({ savedUsername }) => {
 
   const handleClaimPrize = useCallback(async () => {
     if (!result?.roomCode || !result?.winnerSignature) return;
+    if (!isWinningWallet) {
+      setClaimErrorMessage('Connect the wallet that won this match before claiming.');
+      return;
+    }
+
     setClaiming(true);
     setClaimErrorMessage(null);
     try {
-      await claimPrize(result.roomCode, result.winnerSignature);
+      const claimResult = await claimPrize(result.roomCode, result.winnerSignature);
+
+      if (claimResult?.alreadyClaimed) {
+        await markGameClaimed();
+        setClaimed(true);
+        setClaiming(false);
+      }
     } catch (error) {
       console.error('Claim error:', error);
-      setClaimErrorMessage(error.message || 'Claim failed');
+      setClaimErrorMessage(error.shortMessage || error.message || 'Claim failed');
       setClaiming(false);
     }
-  }, [result, claimPrize]);
+  }, [result, claimPrize, isWinningWallet, markGameClaimed]);
 
   // Handle claim success
   useEffect(() => {
     if (isClaimSuccess && claiming) {
       setClaimed(true);
       setClaiming(false);
-      if (result?.roomCode) {
-        fetch(`${BACKEND_URL}/games`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            roomCode: result.roomCode,
-            status: 'finished',
-            claimed: true,
-            claimTxHash: claimTxHash
-          })
-        }).catch(() => {});
-      }
+      markGameClaimed(claimTxHash).catch(error => {
+        console.error('Failed to mark game as claimed:', error);
+      });
     }
-  }, [isClaimSuccess, claiming, claimTxHash, result, BACKEND_URL]);
+  }, [isClaimSuccess, claiming, claimTxHash, markGameClaimed]);
 
   // Handle claim error
   useEffect(() => {
@@ -218,6 +240,11 @@ const GameOver = ({ savedUsername }) => {
               {claimErrorMessage}
             </div>
           )}
+          {!isWinningWallet && (
+            <div style={{ background: 'rgba(255,107,107,0.1)', border: '1px solid #ff6b6b', borderRadius: 8, padding: 10, marginBottom: 12, color: '#ff6b6b', fontSize: '0.85rem' }}>
+              Connect winning wallet {result?.winnerAddress?.slice(0, 6)}...{result?.winnerAddress?.slice(-4)} to claim.
+            </div>
+          )}
           {claimed ? (
             <div style={{ color: '#45CD85', fontSize: '0.9rem' }}>
               Prize claimed!
@@ -231,14 +258,19 @@ const GameOver = ({ savedUsername }) => {
           ) : (
             <button
               onClick={handleClaimPrize}
-              disabled={claiming}
+              disabled={claiming || !isWinningWallet}
               style={{
                 padding: '14px 32px', background: '#7b3fe4', color: '#fff',
                 border: 'none', borderRadius: 8, cursor: claiming ? 'wait' : 'pointer',
+                opacity: isWinningWallet ? 1 : 0.5,
                 fontFamily: '"Press Start 2P", monospace', fontSize: '0.85rem'
               }}
             >
-              {claiming ? (isClaimPending ? 'Confirm in Wallet...' : 'Confirming...') : 'Claim Prize'}
+              {!isWinningWallet
+                ? 'Wrong Wallet'
+                : claiming
+                  ? (isClaimPending ? 'Confirm in Wallet...' : 'Confirming...')
+                  : 'Claim Prize'}
             </button>
           )}
         </div>

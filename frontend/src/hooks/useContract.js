@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
+import { useAccount, usePublicClient, useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
 import { parseEther, parseUnits, formatEther, formatUnits, erc20Abi } from 'viem';
 import { PONG_ESCROW_ADDRESS, PONG_ESCROW_ABI } from '../contracts/PongEscrow';
 import { isNativeToken, CURRENCIES } from '../config/currencies';
@@ -266,11 +266,17 @@ export function useStakeAsPlayer2() {
 // ============ Claim Prize ============
 
 export function useClaimPrize() {
-  const { data: hash, writeContract, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { address: walletAddress, chain } = useAccount();
+  const publicClient = usePublicClient();
+  const { data: hash, writeContractAsync, isPending, error } = useWriteContract();
+  const { data: receipt, isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
   const claimPrize = async (roomCode, signature, feeCurrencyAddress) => {
     try {
+      if (!walletAddress || !publicClient) {
+        throw new Error('Connect the winning wallet before claiming.');
+      }
+
       const txOpts = {
         address: PONG_ESCROW_ADDRESS,
         abi: PONG_ESCROW_ABI,
@@ -280,14 +286,55 @@ export function useClaimPrize() {
       if (feeCurrencyAddress) {
         txOpts.feeCurrency = feeCurrencyAddress;
       }
-      await writeContract(txOpts);
+
+      const match = await publicClient.readContract({
+        address: PONG_ESCROW_ADDRESS,
+        abi: PONG_ESCROW_ABI,
+        functionName: 'getMatch',
+        args: [roomCode],
+      });
+      const status = Number(match.status ?? match[5]);
+      const onChainWinner = match.winner ?? match[4];
+
+      if (status === 3) {
+        const claimedByConnectedWallet =
+          onChainWinner?.toLowerCase() === walletAddress.toLowerCase();
+
+        if (!claimedByConnectedWallet) {
+          throw new Error('This prize was already claimed by another wallet.');
+        }
+
+        return { alreadyClaimed: true, hash: null };
+      }
+
+      if (status !== 2) {
+        throw new Error('This match is not ready for prize claiming.');
+      }
+
+      await publicClient.simulateContract({
+        ...txOpts,
+        account: walletAddress,
+      });
+
+      console.group('[PONG-IT][claimPrize] wallet request');
+      console.table({
+        environment: ENVIRONMENT,
+        chainId: chain?.id ?? null,
+        walletAddress,
+        contractAddress: PONG_ESCROW_ADDRESS,
+        roomCode,
+      });
+      console.groupEnd();
+
+      const submittedHash = await writeContractAsync(txOpts);
+      return { alreadyClaimed: false, hash: submittedHash };
     } catch (err) {
       console.error('Error claiming prize:', err);
       throw err;
     }
   };
 
-  return { claimPrize, hash, isPending, isConfirming, isSuccess, error };
+  return { claimPrize, hash, receipt, isPending, isConfirming, isSuccess, error };
 }
 
 // ============ Claim Refund ============

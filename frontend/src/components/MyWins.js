@@ -13,6 +13,9 @@ const sortWinsByEndedAt = (a, b) => {
   return dateB - dateA;
 };
 
+const addressesMatch = (first, second) =>
+  Boolean(first && second && first.toLowerCase() === second.toLowerCase());
+
 const MyWins = () => {
   const navigate = useNavigate();
   const { address, isConnected } = useAccount();
@@ -150,8 +153,13 @@ const MyWins = () => {
       return 'Insufficient funds in your wallet';
     }
 
-    // Generic transaction failure
-    return 'Transaction failed. Please try again.';
+    if (errorString.includes('already claimed') ||
+        errorString.includes('not ready') ||
+        errorString.includes('winning wallet')) {
+      return error.shortMessage || errorString;
+    }
+
+    return error.shortMessage || 'Transaction failed. Please try again.';
   };
 
   // Handle claim error
@@ -159,11 +167,16 @@ const MyWins = () => {
     if (claimError) {
       console.error('Claim error:', claimError);
       setClaimErrorMessage(getErrorMessage(claimError));
-      setClaimingGameId(null);
     }
   }, [claimError]);
 
   const handleClaimPrize = async (game) => {
+    if (!addressesMatch(address, game.winnerAddress)) {
+      setClaimErrorMessage('Connect the wallet that won this match before claiming.');
+      setClaimingGameId(game._id);
+      return;
+    }
+
     if (!game.winnerSignature) {
       setClaimErrorMessage('Signature not available yet. Please try again later.');
       setClaimingGameId(game._id);
@@ -175,10 +188,27 @@ const MyWins = () => {
     setClaimErrorMessage(null); // Clear any previous errors
 
     try {
-      await claimPrize(game.roomCode, game.winnerSignature);
+      const result = await claimPrize(game.roomCode, game.winnerSignature);
+
+      if (result?.alreadyClaimed) {
+        const response = await fetch(`${BACKEND_URL}/games/${game._id}/claimed`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
+
+        if (!response.ok && response.status !== 400) {
+          throw new Error('Prize is claimed on-chain, but the game record could not be updated.');
+        }
+
+        setWins(current =>
+          current.map(win => win._id === game._id ? { ...win, claimed: true } : win)
+        );
+        setClaimingGameId(null);
+      }
     } catch (error) {
       console.error('Error initiating claim:', error);
-      setClaimingGameId(null);
+      setClaimErrorMessage(getErrorMessage(error));
     }
   };
 
@@ -397,6 +427,7 @@ const MyWins = () => {
             <div className="wins-list">
               {filteredWins.map((game) => {
                 const prize = game.prizeInfo;
+                const isWinningWallet = addressesMatch(address, game.winnerAddress);
                 return (
                   <div key={game._id} className={`win-card ${game.claimed ? 'claimed' : 'claimable'}`}>
                     <div className="win-header">
@@ -458,15 +489,24 @@ const MyWins = () => {
                     </div>
 
                     {!game.claimed && (
-                      <button
-                        onClick={() => handleClaimPrize(game)}
-                        className="claim-button"
-                        disabled={claimingGameId === game._id || !game.winnerSignature}
-                      >
-                        {!game.winnerSignature
-                          ? 'Signature Pending...'
-                          : `Claim ${prize.formattedPayout} ETH`}
-                      </button>
+                      <>
+                        {!isWinningWallet && (
+                          <p className="prize-note">
+                            Connect winning wallet {game.winnerAddress?.slice(0, 6)}...{game.winnerAddress?.slice(-4)}
+                          </p>
+                        )}
+                        <button
+                          onClick={() => handleClaimPrize(game)}
+                          className="claim-button"
+                          disabled={claimingGameId === game._id || !game.winnerSignature || !isWinningWallet}
+                        >
+                          {!isWinningWallet
+                            ? 'Wrong Wallet'
+                            : !game.winnerSignature
+                              ? 'Signature Pending...'
+                              : `Claim ${prize.formattedPayout} ETH`}
+                        </button>
+                      </>
                     )}
                   </div>
                 );
