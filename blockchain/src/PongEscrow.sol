@@ -151,6 +151,15 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
         uint256 timestamp
     );
 
+    event AbandonedMatchRefunded(
+        string indexed roomCode,
+        address indexed player1,
+        address indexed player2,
+        address stakeToken,
+        uint256 amountEach,
+        uint256 timestamp
+    );
+
     event BackendOracleUpdated(
         address indexed oldOracle,
         address indexed newOracle,
@@ -284,6 +293,10 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
             matchData.status == MatchStatus.PLAYER1_STAKED,
             "Match not available"
         );
+        require(
+            block.timestamp < matchData.createdAt + JOIN_TIMEOUT,
+            "Join timeout reached"
+        );
         require(msg.sender != matchData.player1, "Cannot join own match");
 
         address token = matchData.stakeToken; // Locked — player2 has no choice
@@ -408,6 +421,63 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
         _transferTo(matchData.player2, token, refundAmount);
 
         emit ExpiredMatchRefunded(
+            roomCode,
+            matchData.player1,
+            matchData.player2,
+            token,
+            refundAmount,
+            block.timestamp
+        );
+    }
+
+    /**
+     * @notice Refund both players after the backend declares a match abandoned.
+     * @dev Either participant may submit the oracle authorization.
+     */
+    function claimAbandonedMatchRefund(
+        string calldata roomCode,
+        bytes calldata signature
+    )
+        external
+        nonReentrant
+    {
+        Match storage matchData = matches[roomCode];
+
+        require(
+            matchData.status == MatchStatus.BOTH_STAKED,
+            "Match not eligible for refund"
+        );
+        require(
+            msg.sender == matchData.player1 || msg.sender == matchData.player2,
+            "Not a player in this match"
+        );
+
+        bytes32 messageHash = keccak256(
+            abi.encode(
+                block.chainid,
+                address(this),
+                "ABANDONED_MATCH_REFUND",
+                roomCode,
+                matchData.player1,
+                matchData.player2
+            )
+        );
+        address signer = ECDSA.recover(
+            ECDSA.toEthSignedMessageHash(messageHash),
+            signature
+        );
+        require(signer == backendOracle, "Invalid signature");
+
+        matchData.status = MatchStatus.REFUNDED;
+        matchData.completedAt = block.timestamp;
+
+        uint256 refundAmount = matchData.stakeAmount;
+        address token = matchData.stakeToken;
+
+        _transferTo(matchData.player1, token, refundAmount);
+        _transferTo(matchData.player2, token, refundAmount);
+
+        emit AbandonedMatchRefunded(
             roomCode,
             matchData.player1,
             matchData.player2,
@@ -557,6 +627,14 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
         require(!c.accepted, "Already accepted");
         require(msg.sender != c.creator, "Cannot accept own challenge");
         require(block.timestamp < c.expiresAt, "Challenge expired");
+
+        Match storage m = matches[roomCode];
+        if (m.status == MatchStatus.PLAYER1_STAKED) {
+            require(
+                block.timestamp < m.createdAt + JOIN_TIMEOUT,
+                "Join timeout reached"
+            );
+        }
 
         c.acceptor = msg.sender;
         c.accepted = true;

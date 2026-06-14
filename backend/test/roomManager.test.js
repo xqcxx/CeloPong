@@ -78,3 +78,36 @@ test('an expired reservation cannot be committed', () => {
   assert.equal(manager.getRoom('ABC123').guest, null);
   assert.equal(manager.getReservedRoomBySocket('guest-socket'), null);
 });
+
+test('a staked player can reconnect by wallet with a new socket', () => {
+  const manager = new RoomManager();
+  manager.createRoomWithCode(
+    'ABC123',
+    { name: 'host', walletAddress: '0x0000000000000000000000000000000000000001' },
+    'old-socket'
+  );
+  manager.disconnectStakedPlayer('old-socket');
+
+  const result = manager.reconnectPlayer(
+    'ABC123',
+    '0x0000000000000000000000000000000000000001',
+    'new-socket',
+    { name: 'host' }
+  );
+
+  assert.equal(result.success, true);
+  assert.equal(result.role, 'player1');
+  assert.equal(result.room.host.socketId, 'new-socket');
+  assert.equal(result.room.host.connected, true);
+  assert.equal(manager.getRoomByPlayer('new-socket').code, 'ABC123');
+});
+
+test('disconnecting a staked host preserves the room', () => {
+  const manager = createStakedRoom();
+
+  const result = manager.disconnectStakedPlayer('host-socket');
+
+  assert.equal(result.role, 'player1');
+  assert.equal(manager.getRoom('ABC123').host.connected, false);
+  assert.equal(manager.getRoom('ABC123').host.socketId, null);
+});

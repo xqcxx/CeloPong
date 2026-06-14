@@ -364,6 +364,29 @@ export function useClaimRefund() {
   return { claimRefund, hash, isPending, isConfirming, isSuccess, error };
 }
 
+export function useClaimAbandonedMatchRefund() {
+  const { data: hash, writeContractAsync, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const claimAbandonedMatchRefund = async (roomCode, signature) => {
+    return writeContractAsync({
+      address: PONG_ESCROW_ADDRESS,
+      abi: PONG_ESCROW_ABI,
+      functionName: 'claimAbandonedMatchRefund',
+      args: [roomCode, signature],
+    });
+  };
+
+  return {
+    claimAbandonedMatchRefund,
+    hash,
+    isPending,
+    isConfirming,
+    isSuccess,
+    error
+  };
+}
+
 // ============ Wallet Balance Hook ============
 
 export function useWalletBalances(address) {

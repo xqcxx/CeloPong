@@ -3,6 +3,7 @@ class RoomManager {
     this.rooms = new Map();
     this.playerRooms = new Map();
     this.pendingPlayerRooms = new Map();
+    this.walletRooms = new Map();
   }
 
   generateRoomCode() {
@@ -25,7 +26,8 @@ class RoomManager {
       code: roomCode,
       host: {
         ...hostPlayer,
-        socketId: hostSocketId
+        socketId: hostSocketId,
+        connected: true
       },
       guest: null,
       pendingGuest: null,
@@ -49,7 +51,8 @@ class RoomManager {
       code: roomCode,
       host: {
         ...hostPlayer,
-        socketId: hostSocketId
+        socketId: hostSocketId,
+        connected: true
       },
       guest: null,
       pendingGuest: null,
@@ -60,8 +63,95 @@ class RoomManager {
     });
 
     this.playerRooms.set(hostSocketId, roomCode);
+    if (hostPlayer.walletAddress) {
+      this.walletRooms.set(hostPlayer.walletAddress.toLowerCase(), roomCode);
+    }
 
     return roomCode;
+  }
+
+  restoreStakedRoom(gameRecord) {
+    const roomCode = gameRecord.roomCode;
+    const room = {
+      code: roomCode,
+      host: {
+        name: gameRecord.player1?.name,
+        rating: gameRecord.player1?.rating,
+        walletAddress: gameRecord.player1Address,
+        socketId: null,
+        connected: false
+      },
+      guest: gameRecord.player2Address ? {
+        name: gameRecord.player2?.name,
+        rating: gameRecord.player2?.rating,
+        walletAddress: gameRecord.player2Address,
+        socketId: null,
+        connected: false
+      } : null,
+      pendingGuest: null,
+      isStaked: true,
+      spectators: new Set(),
+      status: gameRecord.player2Address ? 'ready' : 'waiting',
+      createdAt: gameRecord.joinDeadline?.getTime?.()
+        ? gameRecord.joinDeadline.getTime() - (10 * 60 * 1000)
+        : gameRecord.createdAt?.getTime?.() || Date.now()
+    };
+
+    this.rooms.set(roomCode, room);
+    this.walletRooms.set(gameRecord.player1Address.toLowerCase(), roomCode);
+    if (gameRecord.player2Address) {
+      this.walletRooms.set(gameRecord.player2Address.toLowerCase(), roomCode);
+    }
+    return room;
+  }
+
+  reconnectPlayer(roomCode, walletAddress, socketId, player) {
+    const room = this.rooms.get(roomCode);
+    if (!room || !room.isStaked) {
+      return { success: false, error: 'Staked room not found' };
+    }
+
+    const normalized = walletAddress.toLowerCase();
+    const role = room.host?.walletAddress?.toLowerCase() === normalized
+      ? 'host'
+      : room.guest?.walletAddress?.toLowerCase() === normalized
+        ? 'guest'
+        : null;
+    if (!role) {
+      return { success: false, error: 'Wallet is not a participant in this room' };
+    }
+
+    const slot = room[role];
+    if (slot.socketId) {
+      this.playerRooms.delete(slot.socketId);
+    }
+    room[role] = {
+      ...slot,
+      ...player,
+      walletAddress: normalized,
+      socketId,
+      connected: true
+    };
+    this.playerRooms.set(socketId, roomCode);
+    this.walletRooms.set(normalized, roomCode);
+    return { success: true, room, role: role === 'host' ? 'player1' : 'player2' };
+  }
+
+  disconnectStakedPlayer(socketId) {
+    const room = this.getRoomByPlayer(socketId);
+    if (!room?.isStaked) return null;
+
+    const role = room.host?.socketId === socketId
+      ? 'host'
+      : room.guest?.socketId === socketId
+        ? 'guest'
+        : null;
+    if (!role) return null;
+
+    room[role].socketId = null;
+    room[role].connected = false;
+    this.playerRooms.delete(socketId);
+    return { room, role: role === 'host' ? 'player1' : 'player2' };
   }
 
   joinRoom(roomCode, guestPlayer, guestSocketId) {
@@ -72,12 +162,16 @@ class RoomManager {
 
     room.guest = {
       ...guestPlayer,
-      socketId: guestSocketId
+      socketId: guestSocketId,
+      connected: true
     };
     room.status = 'ready';
     room.pendingGuest = null;
 
     this.playerRooms.set(guestSocketId, roomCode);
+    if (guestPlayer.walletAddress) {
+      this.walletRooms.set(guestPlayer.walletAddress.toLowerCase(), roomCode);
+    }
     this.pendingPlayerRooms.delete(guestSocketId);
 
     return { success: true, room };
@@ -163,6 +257,12 @@ class RoomManager {
     return roomCode ? this.rooms.get(roomCode) : null;
   }
 
+  getRoomByWallet(walletAddress) {
+    if (!walletAddress) return null;
+    const roomCode = this.walletRooms.get(walletAddress.toLowerCase());
+    return roomCode ? this.rooms.get(roomCode) : null;
+  }
+
   startGame(roomCode) {
     const room = this.rooms.get(roomCode);
     if (room && room.status === 'ready') {
@@ -206,10 +306,12 @@ class RoomManager {
     if (!room) return;
 
     if (room.host) {
-      this.playerRooms.delete(room.host.socketId);
+      if (room.host.socketId) this.playerRooms.delete(room.host.socketId);
+      if (room.host.walletAddress) this.walletRooms.delete(room.host.walletAddress.toLowerCase());
     }
     if (room.guest) {
-      this.playerRooms.delete(room.guest.socketId);
+      if (room.guest.socketId) this.playerRooms.delete(room.guest.socketId);
+      if (room.guest.walletAddress) this.walletRooms.delete(room.guest.walletAddress.toLowerCase());
     }
     if (room.pendingGuest) {
       this.pendingPlayerRooms.delete(room.pendingGuest.socketId);
@@ -266,7 +368,11 @@ class RoomManager {
       }
       if (room.status === 'waiting' && now - room.createdAt > maxAgeMs) {
         removedRooms.push(room);
-        this.removePlayerFromRoom(room.host.socketId);
+        if (room.isStaked) {
+          this.endGame(code);
+        } else {
+          this.removePlayerFromRoom(room.host.socketId);
+        }
       }
     }
     return removedRooms;

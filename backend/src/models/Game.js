@@ -73,6 +73,9 @@ const gameSchema = new mongoose.Schema({
   claimedAt: {
     type: Date
   },
+  abandonmentSignature: {
+    type: String
+  },
 
   // Challenge board fields
   challengeCreated: {
@@ -91,8 +94,50 @@ const gameSchema = new mongoose.Schema({
   // Game status and timestamps
   status: {
     type: String,
-    enum: ['waiting', 'playing', 'finished', 'cancelled', 'refunded'],
+    enum: ['waiting', 'playing', 'paused', 'finished', 'cancelled', 'abandoned', 'refunded'],
     default: 'waiting'
+  },
+  lifecyclePhase: {
+    type: String,
+    enum: [
+      'waiting_for_player2',
+      'waiting_for_player1_return',
+      'ready',
+      'playing',
+      'paused_reconnect',
+      'finished',
+      'abandoned',
+      'refunded'
+    ],
+    default: 'waiting_for_player2',
+    index: true
+  },
+  resultReason: {
+    type: String,
+    enum: ['score', 'forfeit', 'disconnect_timeout', 'abandoned', null],
+    default: null
+  },
+  joinDeadline: Date,
+  player1Connected: { type: Boolean, default: false },
+  player2Connected: { type: Boolean, default: false },
+  player1ReconnectRemainingMs: { type: Number, default: 5 * 60 * 1000 },
+  player2ReconnectRemainingMs: { type: Number, default: 5 * 60 * 1000 },
+  player1DisconnectedAt: Date,
+  player2DisconnectedAt: Date,
+  player1ReconnectDeadline: Date,
+  player2ReconnectDeadline: Date,
+  gameState: {
+    score: { type: [Number], default: [0, 0] },
+    paddles: {
+      player1: { y: { type: Number, default: 0 } },
+      player2: { y: { type: Number, default: 0 } }
+    },
+    hits: { type: Number, default: 0 },
+    startedAt: Date
+  },
+  resultProcessed: {
+    type: Boolean,
+    default: false
   },
   endedAt: {
     type: Date
@@ -133,4 +178,3 @@ gameSchema.methods.getPrizeAmount = function() {
 const Game = mongoose.model('Game', gameSchema);
 
 module.exports = Game;
-

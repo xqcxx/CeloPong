@@ -66,6 +66,26 @@ class SignatureService {
     }
   }
 
+  async signAbandonedRefund(roomCode, player1Address, player2Address, contractAddress, chainId) {
+    if (!this.wallet) {
+      throw new Error('Signature service not initialized');
+    }
+
+    const encoded = ethers.AbiCoder.defaultAbiCoder().encode(
+      ['uint256', 'address', 'string', 'string', 'address', 'address'],
+      [
+        BigInt(chainId),
+        ethers.getAddress(contractAddress),
+        'ABANDONED_MATCH_REFUND',
+        roomCode,
+        ethers.getAddress(player1Address),
+        ethers.getAddress(player2Address)
+      ]
+    );
+    const messageHash = ethers.keccak256(encoded);
+    return this.wallet.signMessage(ethers.getBytes(messageHash));
+  }
+
   /**
    * Get the signer's Ethereum address
    * @returns {string|null} - Signer address or null if not initialized
@@ -85,5 +105,4 @@ class SignatureService {
 
 // Export singleton instance
 module.exports = new SignatureService();
-
 

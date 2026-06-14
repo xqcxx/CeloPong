@@ -10,6 +10,7 @@ import { useStakeAsPlayer2, useApproveToken } from '../hooks/useContract';
 import { CURRENCIES, isNativeToken } from '../config/currencies';
 import { PONG_ESCROW_ADDRESS } from '../contracts/PongEscrow';
 import { useNotification } from './notifications/NotificationProvider';
+import { useWalletSession } from '../hooks/useWalletSession';
 
 const MultiplayerGame = ({ username }) => {
   const canvasRef = useRef(null);
@@ -35,6 +36,8 @@ const MultiplayerGame = ({ username }) => {
   const [isPlayer2Staking, setIsPlayer2Staking] = useState(false);
   const [stakingErrorMessage, setStakingErrorMessage] = useState(null);
   const [lastPlayer2StakeTxHash, setLastPlayer2StakeTxHash] = useState(null);
+  const [stakedRoomState, setStakedRoomState] = useState(null);
+  const [now, setNow] = useState(Date.now());
   const [isCursorHidden, setIsCursorHidden] = useState(false);
   const navigate = useNavigate();
   const { notify, confirm } = useNotification();
@@ -51,6 +54,7 @@ const MultiplayerGame = ({ username }) => {
 
   // Web3 hooks
   const { address, isConnected, chainId } = useAccount();
+  const { ensureWalletSession } = useWalletSession();
   const {
     stakeAsPlayer2,
     hash: player2StakingTxHash,
@@ -68,6 +72,7 @@ const MultiplayerGame = ({ username }) => {
 
   const gameMode = location.state?.gameMode || 'quick';
   const joinRoomCode = location.state?.roomCode;
+  const createRoomCode = location.state?.roomCode;
 
   const drawGame = useCallback((ctx) => {
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -325,14 +330,35 @@ const MultiplayerGame = ({ username }) => {
     }
   }, [player2StakingError]);
 
-  const setupSocket = useCallback(() => {
+  const setupSocket = useCallback(async () => {
     if (!isMounted.current || !username) return;
+
+    let walletSessionToken = null;
+    const isStakedEntry =
+      gameMode === 'create-staked' ||
+      gameMode === 'rejoin-staked' ||
+      (gameMode === 'join' && joinRoomCode
+        ? await fetch(`${BACKEND_URL}/games/${joinRoomCode}`)
+            .then(response => {
+              if (response.status === 404) return null;
+              if (!response.ok) {
+                throw new Error('Unable to verify whether this room is staked');
+              }
+              return response.json();
+            })
+            .then(game => Boolean(game?.isStaked))
+        : false);
+
+    if (isStakedEntry) {
+      walletSessionToken = await ensureWalletSession();
+    }
 
     const socket = io(BACKEND_URL, {
       withCredentials: true,
       transports: ['websocket'],
       path: '/socket.io/',
-      query: { username }
+      query: { username },
+      auth: { walletSessionToken }
     });
 
     socketRef.current = socket;
@@ -347,9 +373,10 @@ const MultiplayerGame = ({ username }) => {
         walletAddress: address
       };
 
-      if (gameMode === 'create' || gameMode === 'create-staked') {
-        const specificRoomCode = location.state?.roomCode;
-        socket.emit('createRoom', playerData, specificRoomCode);
+      if (gameMode === 'rejoin-staked') {
+        socket.emit('rejoinStakedRoom', { roomCode: joinRoomCode });
+      } else if (gameMode === 'create' || gameMode === 'create-staked') {
+        socket.emit('createRoom', playerData, createRoomCode);
       } else if (gameMode === 'join' && joinRoomCode) {
         socket.emit('joinRoom', { roomCode: joinRoomCode, player: playerData });
       } else {
@@ -408,6 +435,32 @@ const MultiplayerGame = ({ username }) => {
       soundManager.startBackgroundMusic();
     });
 
+    socket.on('stakedRoomState', (data) => {
+      setStakedRoomState(data);
+      setRoomCode(data.roomCode);
+      if (data.lifecyclePhase === 'playing') {
+        setIsWaiting(false);
+        setIsPaused(false);
+      } else if (data.player2Address) {
+        setIsWaiting(false);
+        setIsPaused(true);
+        setPausedBy('Disconnected player');
+      } else {
+        setIsWaiting(true);
+      }
+    });
+
+    socket.on('stakedRoomRejoined', (data) => {
+      setStakedRoomState(data.roomState);
+      setRoomCode(data.roomState.roomCode);
+      if (data.game) {
+        setGameData(data.game);
+        prevGameDataRef.current = data.game;
+      }
+      setIsWaiting(!data.roomState.player2Address);
+      setIsPaused(data.roomState.lifecyclePhase !== 'playing');
+    });
+
     socket.on('gameUpdate', (data) => {
       if (prevGameDataRef.current) {
         if (data?.ballVelocity?.x !== prevGameDataRef.current?.ballVelocity?.x) {
@@ -440,7 +493,7 @@ const MultiplayerGame = ({ username }) => {
         'Game over sound failed'
       );
 
-      const isWinner = result.winner === socket.id;
+      const isWinner = result.winnerAddress?.toLowerCase() === address?.toLowerCase();
 
       navigate('/game-over', {
         state: {
@@ -473,7 +526,6 @@ const MultiplayerGame = ({ username }) => {
     socket.on('playerForfeited', (data) => {
       soundManager.stopAll();
       notify(`${data.forfeitedPlayer} forfeited. ${data.winner} wins!`, { type: 'warning' });
-      navigate('/');
     });
 
     socket.on('rematchRequested', (data) => {
@@ -503,6 +555,24 @@ const MultiplayerGame = ({ username }) => {
       navigate('/');
     });
 
+    socket.on('opponentReconnectPending', (data) => {
+      setStakedRoomState(data);
+      setIsPaused(true);
+      setPausedBy('Opponent disconnected');
+      notify('Opponent disconnected. The match is paused for reconnection.', {
+        type: 'warning'
+      });
+    });
+
+    socket.on('matchAbandoned', () => {
+      soundManager.stopAll();
+      notify('Both reconnect windows expired. The match is refundable.', {
+        type: 'warning',
+        duration: 0
+      });
+      navigate('/');
+    });
+
     socket.on('error', (error) => {
       console.error('Socket error:', error);
       notify('Error: ' + error.message, { type: 'error' });
@@ -512,7 +582,7 @@ const MultiplayerGame = ({ username }) => {
       socket.removeAllListeners();
       socket.disconnect();
     };
-  }, [username, gameMode, joinRoomCode, navigate, notify, address]);
+  }, [username, gameMode, joinRoomCode, createRoomCode, navigate, notify, address, ensureWalletSession]);
 
   useEffect(() => {
     isMounted.current = true;
@@ -522,13 +592,26 @@ const MultiplayerGame = ({ username }) => {
       return;
     }
 
-    const cleanup = setupSocket();
+    let cleanup;
+    setupSocket()
+      .then(dispose => {
+        cleanup = dispose;
+      })
+      .catch(error => {
+        notify(error.message || 'Unable to connect to the staked room.', { type: 'error' });
+        navigate('/');
+      });
 
     return () => {
       isMounted.current = false;
       if (cleanup) cleanup();
     };
-  }, [setupSocket, username, navigate]);
+  }, [setupSocket, username, navigate, notify]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -613,7 +696,9 @@ const MultiplayerGame = ({ username }) => {
   }, []);
 
   const handleLeaveGame = useCallback(async () => {
-    const leavingWaitingStake = isWaiting && gameMode === 'create-staked';
+    const leavingWaitingStake =
+      (gameMode === 'create-staked' || gameMode === 'rejoin-staked' || Boolean(stakedRoomState)) &&
+      (stakedRoomState ? !stakedRoomState.player2Address : isWaiting);
     const message = leavingWaitingStake
       ? 'Leave this lobby? Your stake can be reclaimed after the 10-minute join timeout.'
       : 'Are you sure you want to leave? You will forfeit the game.';
@@ -638,17 +723,43 @@ const MultiplayerGame = ({ username }) => {
       }
       navigate('/');
     }
-  }, [navigate, isWaiting, gameMode, notify, confirm]);
+  }, [navigate, stakedRoomState, gameMode, isWaiting, notify, confirm]);
+
+  const myRole = address && stakedRoomState
+    ? stakedRoomState.player1Address?.toLowerCase() === address.toLowerCase()
+      ? 'player1'
+      : 'player2'
+    : null;
+  const opponentRole = myRole === 'player1' ? 'player2' : 'player1';
+  const reconnectDeadline = stakedRoomState?.[`${opponentRole}ReconnectDeadline`];
+  const reconnectSeconds = reconnectDeadline
+    ? Math.max(0, Math.ceil((reconnectDeadline - now) / 1000))
+    : 0;
+  const reconnectMinutes = Math.floor(reconnectSeconds / 60);
+  const reconnectRemainder = reconnectSeconds % 60;
+  const joinSeconds = stakedRoomState?.joinDeadline
+    ? Math.max(0, Math.ceil((stakedRoomState.joinDeadline - now) / 1000))
+    : 0;
+  const joinMinutes = Math.floor(joinSeconds / 60);
+  const joinRemainder = joinSeconds % 60;
+  const isSoloStakedRoom =
+    (gameMode === 'create-staked' || gameMode === 'rejoin-staked' || Boolean(stakedRoomState)) &&
+    (stakedRoomState ? !stakedRoomState.player2Address : isWaiting);
 
   return (
     <div className="game-container" ref={containerRef} style={{ touchAction: 'none' }}>
       <button onClick={handleLeaveGame} className="back-button" aria-label="Leave game">
-        ← Back
+        {isSoloStakedRoom ? 'Leave Room' : '← Back'}
       </button>
 
       {roomCode && (
         <div className="room-info">
           <span className="room-code-display">Room: {roomCode}</span>
+          {stakedRoomState && !stakedRoomState.player2Address && (
+            <span className="room-code-display">
+              Join window: {joinMinutes}:{String(joinRemainder).padStart(2, '0')}
+            </span>
+          )}
         </div>
       )}
 
@@ -701,7 +812,14 @@ const MultiplayerGame = ({ username }) => {
           <div className="pause-message">
             <h2>Game Paused</h2>
             <p>Paused by: {pausedBy}</p>
-            <p>Resuming in 10 seconds...</p>
+            {stakedRoomState?.lifecyclePhase === 'paused_reconnect' ||
+             stakedRoomState?.lifecyclePhase === 'waiting_for_player1_return' ? (
+              <p>
+                Reconnect window: {reconnectMinutes}:{String(reconnectRemainder).padStart(2, '0')}
+              </p>
+            ) : (
+              <p>Resuming in 10 seconds...</p>
+            )}
           </div>
         </div>
       )}

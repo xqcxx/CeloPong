@@ -7,6 +7,9 @@ const signatureService = require('./services/signatureService');
 const escrowVerificationService = require('./services/escrowVerificationService');
 const emitLeaderboardUpdate = require('./utils/emitLeaderboardUpdate');
 
+const RECONNECT_BUDGET_MS = 5 * 60 * 1000;
+const JOIN_TIMEOUT_MS = 10 * 60 * 1000;
+
 class MultiplayerHandler {
   constructor(io) {
     this.io = io;
@@ -14,13 +17,112 @@ class MultiplayerHandler {
     this.gameManager = new GameManager();
     this.leaderboardManager = new LeaderboardManager();
     this.gameLoops = new Map();
+    this.lastPersistedScores = new Map();
 
     setInterval(() => {
       const removedRooms = this.roomManager.cleanupStaleRooms();
       removedRooms.forEach(room => {
-        this.markWaitingStakedRoomCancelled(room);
+        if (!room.isStaked) this.markWaitingStakedRoomCancelled(room);
       });
     }, 60000);
+
+    setInterval(() => {
+      this.settleReconnectDeadlines().catch(error => {
+        console.error('Failed to settle reconnect deadlines:', error);
+      });
+    }, 1000);
+
+    this.rehydrateStakedRooms().catch(error => {
+      console.error('Failed to rehydrate staked rooms:', error);
+    });
+  }
+
+  async rehydrateStakedRooms() {
+    const games = await Game.find({
+      isStaked: true,
+      status: { $in: ['waiting', 'playing', 'paused'] }
+    });
+
+    for (const record of games) {
+      if (!record.joinDeadline) {
+        record.joinDeadline = new Date(record.createdAt.getTime() + JOIN_TIMEOUT_MS);
+      }
+      if (record.resultProcessed == null) {
+        record.resultProcessed = false;
+      }
+      record.player1Connected = false;
+      record.player2Connected = false;
+      if (record.player2Address) {
+        record.status = 'paused';
+        record.lifecyclePhase = 'paused_reconnect';
+        const now = Date.now();
+        if (!record.player1ReconnectDeadline) {
+          record.player1DisconnectedAt = new Date(now);
+          record.player1ReconnectDeadline = new Date(
+            now + (record.player1ReconnectRemainingMs ?? RECONNECT_BUDGET_MS)
+          );
+        }
+        if (!record.player2ReconnectDeadline) {
+          record.player2DisconnectedAt = new Date(now);
+          record.player2ReconnectDeadline = new Date(
+            now + (record.player2ReconnectRemainingMs ?? RECONNECT_BUDGET_MS)
+          );
+        }
+      } else {
+        record.lifecyclePhase = 'waiting_for_player2';
+      }
+      await record.save();
+
+      const room = this.roomManager.restoreStakedRoom(record);
+      if (record.player2Address) {
+        const game = this.gameManager.createGame(
+          record.roomCode,
+          room.host,
+          room.guest,
+          record.gameState
+        );
+        game.isPaused = true;
+        game.reconnectPaused = true;
+      }
+    }
+  }
+
+  authenticatedWallet(socket) {
+    return socket.data?.walletAddress?.toLowerCase() || null;
+  }
+
+  requireStakedWallet(socket, requestedWallet) {
+    const authenticated = this.authenticatedWallet(socket);
+    if (!authenticated) {
+      throw new Error('Sign in with your wallet before entering a staked room');
+    }
+    if (requestedWallet && authenticated !== requestedWallet.toLowerCase()) {
+      throw new Error('Authenticated wallet does not match player wallet');
+    }
+    return authenticated;
+  }
+
+  roomState(record) {
+    return {
+      roomCode: record.roomCode,
+      lifecyclePhase: record.lifecyclePhase,
+      status: record.status,
+      serverTime: Date.now(),
+      joinDeadline: record.joinDeadline?.getTime?.() || null,
+      player1Connected: record.player1Connected,
+      player2Connected: record.player2Connected,
+      player1ReconnectDeadline: record.player1ReconnectDeadline?.getTime?.() || null,
+      player2ReconnectDeadline: record.player2ReconnectDeadline?.getTime?.() || null,
+      player1ReconnectRemainingMs: record.player1ReconnectRemainingMs,
+      player2ReconnectRemainingMs: record.player2ReconnectRemainingMs,
+      score: record.gameState?.score || [record.score?.player1 || 0, record.score?.player2 || 0],
+      player1Address: record.player1Address,
+      player2Address: record.player2Address
+    };
+  }
+
+  async emitRoomState(record) {
+    this.io.to(record.roomCode).emit('stakedRoomState', this.roomState(record));
   }
 
   handleConnection(socket) {
@@ -32,6 +134,10 @@ class MultiplayerHandler {
 
     socket.on('joinRoom', (data) => {
       this.handleJoinRoom(socket, data);
+    });
+
+    socket.on('rejoinStakedRoom', (data) => {
+      this.handleRejoinStakedRoom(socket, data);
     });
 
     socket.on('findRandomMatch', (player) => {
@@ -84,7 +190,9 @@ class MultiplayerHandler {
     });
 
     socket.on('disconnect', () => {
-      this.handleDisconnect(socket);
+      this.handleDisconnect(socket).catch(error => {
+        console.error('Failed to process disconnect:', error);
+      });
     });
 
     socket.on('getLeaderboard', async () => {
@@ -112,6 +220,22 @@ class MultiplayerHandler {
       return;
     }
 
+    if (providedRoomCode) {
+      try {
+        const walletAddress = this.requireStakedWallet(socket, player.walletAddress);
+        player.walletAddress = walletAddress;
+        const existingRecord = await Game.findOne({ roomCode: providedRoomCode });
+        const restoredRoom = this.roomManager.getRoom(providedRoomCode);
+        if (existingRecord?.isStaked && restoredRoom) {
+          await this.handleRejoinStakedRoom(socket, { roomCode: providedRoomCode });
+          return;
+        }
+      } catch (error) {
+        socket.emit('error', { message: error.message });
+        return;
+      }
+    }
+
     // Use provided room code for staked matches, or generate new one
     const roomCode = providedRoomCode || this.roomManager.createRoom(player, socket.id);
 
@@ -128,6 +252,28 @@ class MultiplayerHandler {
       roomCode,
       room: this.roomManager.getRoom(roomCode)
     });
+
+    if (providedRoomCode) {
+      const matchData = await escrowVerificationService.getMatch(roomCode);
+      const authenticatedWallet = this.authenticatedWallet(socket);
+      if (matchData.player1.toLowerCase() !== authenticatedWallet) {
+        this.roomManager.endGame(roomCode);
+        socket.emit('error', { message: 'Connected wallet did not create this on-chain match' });
+        return;
+      }
+      const createdAt = Number(matchData.createdAt) * 1000;
+      const gameRecord = await Game.findOneAndUpdate(
+        { roomCode },
+        {
+          lifecyclePhase: 'waiting_for_player2',
+          status: 'waiting',
+          joinDeadline: new Date(createdAt + JOIN_TIMEOUT_MS),
+          player1Connected: true
+        },
+        { new: true }
+      );
+      if (gameRecord) await this.emitRoomState(gameRecord);
+    }
   }
 
   async handleJoinRoom(socket, { roomCode, player }) {
@@ -151,12 +297,35 @@ class MultiplayerHandler {
       const gameRecord = await Game.findOne({ roomCode });
 
       if (gameRecord?.isStaked) {
+        let walletAddress;
+        try {
+          walletAddress = this.requireStakedWallet(socket, player.walletAddress);
+          player.walletAddress = walletAddress;
+        } catch (error) {
+          socket.emit('error', { message: error.message });
+          return;
+        }
+
+        if (walletAddress === gameRecord.player1Address ||
+            walletAddress === gameRecord.player2Address) {
+          await this.handleRejoinStakedRoom(socket, { roomCode });
+          return;
+        }
+
         if (gameRecord.player2TxHash) {
           socket.emit('error', { message: 'This staked room has already been joined' });
           return;
         }
 
-        const reservation = this.roomManager.reserveRoom(roomCode, player, socket.id);
+        if (gameRecord.joinDeadline &&
+            gameRecord.joinDeadline.getTime() <= Date.now()) {
+          socket.emit('error', { message: 'This room has expired' });
+          return;
+        }
+
+        let room = this.roomManager.getRoom(roomCode);
+        if (!room) room = this.roomManager.restoreStakedRoom(gameRecord);
+        const reservation = this.roomManager.reserveRoom(room.code, player, socket.id);
         if (!reservation.success) {
           socket.emit('error', { message: reservation.error });
           return;
@@ -196,7 +365,129 @@ class MultiplayerHandler {
     this.startGame(roomCode);
   }
 
+  async handleRejoinStakedRoom(socket, { roomCode }) {
+    try {
+      const walletAddress = this.requireStakedWallet(socket);
+      const record = await Game.findOne({
+        roomCode,
+        isStaked: true,
+        $or: [
+          { player1Address: walletAddress },
+          { player2Address: walletAddress }
+        ]
+      });
+      if (!record) {
+        throw new Error('No active staked room found for this wallet');
+      }
+      if (['finished', 'abandoned', 'refunded'].includes(record.status)) {
+        throw new Error('This staked match has already ended');
+      }
+      if (!record.player2Address &&
+          record.joinDeadline?.getTime?.() <= Date.now()) {
+        throw new Error('This room expired. Claim the unmatched stake refund instead.');
+      }
+
+      let room = this.roomManager.getRoom(roomCode);
+      if (!room) room = this.roomManager.restoreStakedRoom(record);
+
+      const role = record.player1Address === walletAddress ? 'player1' : 'player2';
+      const player = role === 'player1' ? record.player1 : record.player2;
+      const playerData = player?.toObject ? player.toObject() : player;
+      const result = this.roomManager.reconnectPlayer(
+        roomCode,
+        walletAddress,
+        socket.id,
+        { ...playerData, walletAddress }
+      );
+      if (!result.success) throw new Error(result.error);
+
+      socket.join(roomCode);
+      const deadlineField = `${role}ReconnectDeadline`;
+      const remainingField = `${role}ReconnectRemainingMs`;
+      const connectedField = `${role}Connected`;
+      const disconnectedField = `${role}DisconnectedAt`;
+      const deadline = record[deadlineField]?.getTime?.();
+      const ownExpired = Boolean(deadline && deadline <= Date.now());
+      if (deadline) {
+        record[remainingField] = Math.max(0, deadline - Date.now());
+      }
+      if (!ownExpired) {
+        record[deadlineField] = null;
+        record[disconnectedField] = null;
+      }
+      record[connectedField] = true;
+
+      if (record.player2Address) {
+        const isStartingAfterPlayer1Return =
+          record.lifecyclePhase === 'waiting_for_player1_return';
+        let game = this.gameManager.getGame(roomCode);
+        if (!game) {
+          game = this.gameManager.createGame(
+            roomCode,
+            room.host,
+            room.guest,
+            record.gameState
+          );
+          game.isPaused = true;
+          game.reconnectPaused = true;
+        }
+        this.gameManager.reconnectPlayer(roomCode, walletAddress, socket.id);
+
+        const otherRole = role === 'player1' ? 'player2' : 'player1';
+        if (ownExpired && record[`${otherRole}Connected`]) {
+          await record.save();
+          await this.finishByRole(record, otherRole, 'disconnect_timeout');
+          return;
+        }
+        const otherExpired = (record[`${otherRole}ReconnectDeadline`]?.getTime?.() || Infinity) <= Date.now();
+        if (otherExpired) {
+          await record.save();
+          await this.finishByRole(record, role, 'disconnect_timeout');
+          return;
+        }
+
+        if (record.player1Connected && record.player2Connected) {
+          record.status = 'playing';
+          record.lifecyclePhase = 'playing';
+          this.gameManager.resumeAfterReconnect(roomCode);
+          this.startGameLoop(roomCode);
+          if (isStartingAfterPlayer1Return) {
+            this.io.to(roomCode).emit('gameStart', game);
+          } else {
+            this.io.to(roomCode).emit('gameResumed');
+          }
+        } else {
+          record.status = 'paused';
+          record.lifecyclePhase = role === 'player2' && !record.player1Connected
+            ? 'waiting_for_player1_return'
+            : 'paused_reconnect';
+        }
+      } else {
+        record.status = 'waiting';
+        record.lifecyclePhase = 'waiting_for_player2';
+      }
+
+      await record.save();
+      socket.emit('stakedRoomRejoined', {
+        role,
+        roomState: this.roomState(record),
+        game: this.gameManager.getGame(roomCode)
+      });
+      await this.emitRoomState(record);
+    } catch (error) {
+      socket.emit('error', { message: error.message });
+    }
+  }
+
   async handlePlayer2StakeCompleted(socket, { roomCode, txHash, playerAddress, chainId }) {
+    let authenticatedWallet;
+    try {
+      authenticatedWallet = this.requireStakedWallet(socket, playerAddress);
+    } catch (error) {
+      socket.emit('player2StakeVerificationFailed', { message: error.message });
+      return;
+    }
+
     const room = this.roomManager.getRoom(roomCode);
     if (!room) {
       socket.emit('error', { message: 'Room not found' });
@@ -212,7 +503,7 @@ class MultiplayerHandler {
       const verifiedStake = await escrowVerificationService.verifyPlayer2Stake({
         roomCode,
         txHash,
-        playerAddress,
+        playerAddress: authenticatedWallet,
         chainId
       });
       const gameRecord = await Game.findOne({ roomCode });
@@ -227,8 +518,6 @@ class MultiplayerHandler {
       gameRecord.player2Address = verifiedStake.player2Address;
       gameRecord.player2TxHash = verifiedStake.player2TxHash;
       gameRecord.challengeAccepted = true;
-      gameRecord.status = 'playing';
-      await gameRecord.save();
 
       const result = this.roomManager.commitReservedGuest(roomCode, socket.id);
       if (!result.success) {
@@ -237,7 +526,31 @@ class MultiplayerHandler {
 
       socket.join(roomCode);
       this.io.to(roomCode).emit('roomReady', { room: result.room });
-      this.startGame(roomCode);
+      gameRecord.player2Connected = true;
+      if (gameRecord.player1Connected) {
+        gameRecord.status = 'playing';
+        gameRecord.lifecyclePhase = 'playing';
+        await gameRecord.save();
+        this.startGame(roomCode);
+      } else {
+        const now = Date.now();
+        gameRecord.status = 'paused';
+        gameRecord.lifecyclePhase = 'waiting_for_player1_return';
+        gameRecord.player1DisconnectedAt = new Date(now);
+        gameRecord.player1ReconnectDeadline = new Date(
+          now + gameRecord.player1ReconnectRemainingMs
+        );
+        await gameRecord.save();
+        const game = this.gameManager.createGame(
+          roomCode,
+          result.room.host,
+          result.room.guest,
+          gameRecord.gameState
+        );
+        game.isPaused = true;
+        game.reconnectPaused = true;
+      }
+      await this.emitRoomState(gameRecord);
     } catch (error) {
       console.error('Player 2 stake verification failed:', error);
       socket.emit('player2StakeVerificationFailed', {
@@ -285,7 +598,7 @@ class MultiplayerHandler {
     }
   }
 
-  startGame(roomCode) {
+  async startGame(roomCode) {
     const room = this.roomManager.getRoom(roomCode);
     if (!room || room.status !== 'ready') return;
 
@@ -299,6 +612,24 @@ class MultiplayerHandler {
 
     this.io.to(roomCode).emit('gameStart', gameState);
 
+    if (room.isStaked) {
+      await Game.updateOne(
+        { roomCode },
+        {
+          status: 'playing',
+          lifecyclePhase: 'playing',
+          player1Connected: true,
+          player2Connected: true,
+          gameState: {
+            score: gameState.score,
+            paddles: gameState.paddles,
+            hits: gameState.hits,
+            startedAt: new Date(gameState.startTime)
+          }
+        }
+      );
+    }
+
     this.startGameLoop(roomCode);
   }
 
@@ -311,16 +642,33 @@ class MultiplayerHandler {
       const result = this.gameManager.updateGameState(roomCode);
 
       if (!result) {
+        const game = this.gameManager.getGame(roomCode);
+        if (!game || game.status !== 'active') {
+          clearInterval(interval);
+          this.gameLoops.delete(roomCode);
+        }
+        return;
+      }
+
+      if (result.gameOver) {
+        this.handleGameOver(roomCode, result.winner, result.game, 'score');
         clearInterval(interval);
         this.gameLoops.delete(roomCode);
         return;
       }
 
-      if (result.gameOver) {
-        this.handleGameOver(roomCode, result.winner, result.game);
-        clearInterval(interval);
-        this.gameLoops.delete(roomCode);
-        return;
+      const scoreKey = result.score?.join(':');
+      if (scoreKey && this.lastPersistedScores.get(roomCode) !== scoreKey) {
+        this.lastPersistedScores.set(roomCode, scoreKey);
+        Game.updateOne(
+          { roomCode, isStaked: true },
+          {
+            'gameState.score': result.score,
+            'gameState.paddles': result.paddles,
+            'gameState.hits': result.hits,
+            score: { player1: result.score[0], player2: result.score[1] }
+          }
+        ).catch(error => console.error('Failed to persist staked score:', error));
       }
 
       this.io.to(roomCode).emit('gameUpdate', result);
@@ -329,16 +677,49 @@ class MultiplayerHandler {
     this.gameLoops.set(roomCode, interval);
   }
 
-  async handleGameOver(roomCode, winner, game) {
-    const loser = game.players.find(p => p.socketId !== winner.socketId);
-
-    if (!winner || !loser) {
+  async handleGameOver(roomCode, winner, game, resultReason = 'score') {
+    if (!winner) {
+      this.endGame(roomCode);
+      return;
+    }
+    const loser = game.players.find(p => p.walletAddress !== winner.walletAddress);
+    if (!loser) {
       this.endGame(roomCode);
       return;
     }
 
+    const winnerRole = game.players[0].walletAddress === winner.walletAddress
+      ? 'player1'
+      : 'player2';
+    const scoreObject = game.score
+      ? { player1: game.score[0], player2: game.score[1] }
+      : { player1: 0, player2: 0 };
+
     let ratingResult = null;
-    let gameRecord = null;
+    let gameRecord = await Game.findOne({ roomCode });
+
+    if (gameRecord?.isStaked) {
+      gameRecord = await Game.findOneAndUpdate(
+        { _id: gameRecord._id, resultProcessed: false },
+        {
+          resultProcessed: true,
+          winner: winnerRole,
+          winnerAddress: winnerRole === 'player1'
+            ? gameRecord.player1Address
+            : gameRecord.player2Address,
+          score: scoreObject,
+          status: 'finished',
+          lifecyclePhase: 'finished',
+          resultReason,
+          endedAt: new Date()
+        },
+        { new: true }
+      );
+      if (!gameRecord) {
+        this.endGame(roomCode);
+        return;
+      }
+    }
 
     try {
       ratingResult = await this.leaderboardManager.processGameResult(
@@ -351,15 +732,6 @@ class MultiplayerHandler {
 
     // Save game result to database (both staked and casual games)
     try {
-      // Determine which player won (player1 or player2)
-      const winnerRole = game.players[0].socketId === winner.socketId ? 'player1' : 'player2';
-
-      // Check if game record already exists
-      gameRecord = await Game.findOne({ roomCode });
-
-      // Convert score array to object if needed
-      const scoreObject = game.score ? { player1: game.score[0], player2: game.score[1] } : { player1: 0, player2: 0 };
-
       if (gameRecord) {
         // Update existing game (staked or casual)
         if (gameRecord.isStaked) {
@@ -368,11 +740,15 @@ class MultiplayerHandler {
           console.log(`🎮 Casual match ended. Updating game record with winner...`);
         }
 
-        gameRecord.winner = winnerRole;
-        gameRecord.score = scoreObject;
-        gameRecord.status = 'finished';
-        gameRecord.endedAt = new Date();
-        gameRecord.winnerAddress = winnerRole === 'player1' ? gameRecord.player1Address : gameRecord.player2Address;
+        if (!gameRecord.isStaked) {
+          gameRecord.winner = winnerRole;
+          gameRecord.score = scoreObject;
+          gameRecord.status = 'finished';
+          gameRecord.lifecyclePhase = 'finished';
+          gameRecord.resultReason = resultReason;
+          gameRecord.resultProcessed = true;
+          gameRecord.endedAt = new Date();
+        }
 
         // Generate signature if staked and not already generated
         if (gameRecord.isStaked && gameRecord.winnerAddress && !gameRecord.winnerSignature) {
@@ -474,7 +850,13 @@ class MultiplayerHandler {
     if (!room) return;
 
     const roomCode = room.code;
-    this.markWaitingStakedRoomCancelled(room);
+    if (room.isStaked) {
+      this.handleStakedDisconnect(socket, { intentionalLeave: true }).catch(error => {
+        console.error('Failed to leave staked room:', error);
+      });
+      socket.leave(roomCode);
+      return;
+    }
 
     socket.leave(roomCode);
 
@@ -540,8 +922,9 @@ class MultiplayerHandler {
     });
 
     const pauseTimeout = setTimeout(() => {
-      this.gameManager.resumeGame(game.roomCode);
-      this.io.to(game.roomCode).emit('gameResumed');
+      if (this.gameManager.resumeGame(game.roomCode)) {
+        this.io.to(game.roomCode).emit('gameResumed');
+      }
     }, 10000);
 
     game.pauseTimeout = pauseTimeout;
@@ -559,7 +942,7 @@ class MultiplayerHandler {
       winner: winner.name
     });
 
-    this.handleGameOver(game.roomCode, winner, game);
+    this.handleGameOver(game.roomCode, winner, game, 'forfeit');
   }
 
   handleRematchRequest(socket) {
@@ -599,7 +982,7 @@ class MultiplayerHandler {
     }
   }
 
-  handleDisconnect(socket) {
+  async handleDisconnect(socket) {
     this.handleLeaveSpectate(socket);
 
     const reservedRoom = this.roomManager.getReservedRoomBySocket(socket.id);
@@ -613,6 +996,11 @@ class MultiplayerHandler {
 
     const room = this.roomManager.getRoomByPlayer(socket.id);
     if (!room) return;
+
+    if (room.isStaked) {
+      await this.handleStakedDisconnect(socket);
+      return;
+    }
 
     const roomCode = room.code;
     this.markWaitingStakedRoomCancelled(room);
@@ -636,6 +1024,130 @@ class MultiplayerHandler {
 
     this.endGame(roomCode);
     this.roomManager.removePlayerFromRoom(socket.id);
+  }
+
+  async handleStakedDisconnect(socket) {
+    const disconnected = this.roomManager.disconnectStakedPlayer(socket.id);
+    if (!disconnected) return;
+
+    const { room, role } = disconnected;
+    const record = await Game.findOne({ roomCode: room.code, isStaked: true });
+    if (!record || ['finished', 'abandoned', 'refunded'].includes(record.status)) return;
+
+    record[`${role}Connected`] = false;
+    if (!record.player2Address) {
+      record.status = 'waiting';
+      record.lifecyclePhase = 'waiting_for_player2';
+      await record.save();
+      await this.emitRoomState(record);
+      return;
+    }
+
+    const remainingField = `${role}ReconnectRemainingMs`;
+    const disconnectedField = `${role}DisconnectedAt`;
+    const deadlineField = `${role}ReconnectDeadline`;
+    const now = Date.now();
+    record[remainingField] = Math.max(0, record[remainingField] ?? RECONNECT_BUDGET_MS);
+    record[disconnectedField] = new Date(now);
+    record[deadlineField] = new Date(now + record[remainingField]);
+    record.status = 'paused';
+    record.lifecyclePhase = role === 'player1' && record.player2Connected
+      ? 'waiting_for_player1_return'
+      : 'paused_reconnect';
+
+    this.gameManager.disconnectPlayer(room.code, socket.id);
+    const game = this.gameManager.getGame(room.code);
+    if (game) {
+      record.gameState = {
+        score: game.score,
+        paddles: game.paddles,
+        hits: game.hits,
+        startedAt: new Date(game.startTime)
+      };
+    }
+    await record.save();
+    this.io.to(room.code).emit('opponentReconnectPending', this.roomState(record));
+    await this.emitRoomState(record);
+  }
+
+  async settleReconnectDeadlines() {
+    const now = new Date();
+    const records = await Game.find({
+      isStaked: true,
+      status: 'paused',
+      lifecyclePhase: { $in: ['waiting_for_player1_return', 'paused_reconnect'] },
+      resultProcessed: false,
+      $or: [
+        {
+          player1ReconnectDeadline: { $lte: now },
+          player1ReconnectRemainingMs: { $gt: 0 }
+        },
+        {
+          player2ReconnectDeadline: { $lte: now },
+          player2ReconnectRemainingMs: { $gt: 0 }
+        }
+      ]
+    });
+
+    for (const record of records) {
+      const player1Expired = record.player1ReconnectDeadline?.getTime() <= now.getTime();
+      const player2Expired = record.player2ReconnectDeadline?.getTime() <= now.getTime();
+
+      if (player1Expired) record.player1ReconnectRemainingMs = 0;
+      if (player2Expired) record.player2ReconnectRemainingMs = 0;
+
+      if (player1Expired && player2Expired) {
+        await this.abandonMatch(record);
+      } else if (player1Expired && record.player2Connected) {
+        await this.finishByRole(record, 'player2', 'disconnect_timeout');
+      } else if (player2Expired && record.player1Connected) {
+        await this.finishByRole(record, 'player1', 'disconnect_timeout');
+      } else {
+        await record.save();
+        await this.emitRoomState(record);
+      }
+    }
+  }
+
+  async finishByRole(record, winnerRole, reason) {
+    if (record.resultProcessed) return;
+    const room = this.roomManager.getRoom(record.roomCode);
+    const game = this.gameManager.getGame(record.roomCode);
+    if (!room || !game) return;
+    const winner = winnerRole === 'player1' ? room.host : room.guest;
+    await this.handleGameOver(record.roomCode, winner, game, reason);
+  }
+
+  async abandonMatch(record) {
+    const abandonmentSignature = await signatureService.signAbandonedRefund(
+      record.roomCode,
+      record.player1Address,
+      record.player2Address,
+      process.env.PONG_ESCROW_ADDRESS,
+      Number(process.env.CELO_CHAIN_ID)
+    );
+    const claimed = await Game.findOneAndUpdate(
+      {
+        _id: record._id,
+        resultProcessed: false,
+        status: 'paused'
+      },
+      {
+        resultProcessed: true,
+        status: 'abandoned',
+        lifecyclePhase: 'abandoned',
+        resultReason: 'abandoned',
+        abandonmentSignature,
+        endedAt: new Date()
+      },
+      { new: true }
+    );
+    if (!claimed) return;
+    this.io.to(claimed.roomCode).emit('matchAbandoned', {
+      roomCode: claimed.roomCode,
+      abandonmentSignature: claimed.abandonmentSignature
+    });
+    this.endGame(claimed.roomCode);
   }
 
   async markWaitingStakedRoomCancelled(room) {

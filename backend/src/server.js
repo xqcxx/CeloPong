@@ -13,6 +13,7 @@ const Player = require('./models/Player');
 const Game = require('./models/Game');
 const signatureService = require('./services/signatureService');
 const escrowVerificationService = require('./services/escrowVerificationService');
+const walletSessionService = require('./services/walletSessionService');
 const { getCorsOrigins } = require('./utils/corsOrigins');
 
 const app = express();
@@ -157,6 +158,16 @@ const io = new Server(httpServer, {
   perMessageDeflate: false
 });
 
+io.use(async (socket, next) => {
+  try {
+    const token = socket.handshake.auth?.walletSessionToken;
+    socket.data.walletAddress = await walletSessionService.authenticateToken(token);
+    next();
+  } catch (error) {
+    next(new Error('Unable to authenticate wallet session'));
+  }
+});
+
 const gameHandlers = new GameHandlers(io);
 const multiplayerHandler = new MultiplayerHandler(io);
 
@@ -190,6 +201,26 @@ app.get('/health/chain', async (req, res) => {
 });
 
 // ============ PLAYER ENDPOINTS ============
+
+app.get('/auth/wallet-challenge/:walletAddress', async (req, res) => {
+  try {
+    res.status(200).json(
+      await walletSessionService.createChallenge(req.params.walletAddress)
+    );
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/auth/wallet-session', async (req, res) => {
+  try {
+    res.status(200).json(
+      await walletSessionService.verifyChallenge(req.body)
+    );
+  } catch (error) {
+    res.status(401).json({ error: error.message });
+  }
+});
 
 // Get all players
 app.get('/players', async (req, res) => {
@@ -513,7 +544,13 @@ app.post('/games', async (req, res) => {
         player2Address: player2Address?.toLowerCase(),
         player1TxHash,
         player2TxHash,
-        status: status || (player2 ? 'playing' : 'waiting')
+        status: status || (player2 ? 'playing' : 'waiting'),
+        lifecyclePhase: isStaked
+          ? (player2 ? 'ready' : 'waiting_for_player2')
+          : undefined,
+        joinDeadline: isStaked ? new Date(Date.now() + 10 * 60 * 1000) : undefined,
+        player1Connected: false,
+        player2Connected: false
       });
     }
 
@@ -776,6 +813,46 @@ app.get('/games/pending-stakes/:playerAddress', async (req, res) => {
   }
 });
 
+app.get('/games/active-staked', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
+    const walletAddress = await walletSessionService.authenticateToken(token);
+    if (!walletAddress) {
+      return res.status(401).json({ error: 'Valid wallet session required' });
+    }
+
+    const games = await Game.find({
+      isStaked: true,
+      status: { $in: ['waiting', 'playing', 'paused', 'abandoned'] },
+      $or: [
+        { player1Address: walletAddress },
+        { player2Address: walletAddress }
+      ]
+    })
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    res.status(200).json(games.map(game => ({
+      roomCode: game.roomCode,
+      role: game.player1Address === walletAddress ? 'player1' : 'player2',
+      lifecyclePhase: game.lifecyclePhase,
+      status: game.status,
+      score: game.gameState?.score || [game.score?.player1 || 0, game.score?.player2 || 0],
+      joinDeadline: game.joinDeadline,
+      player1ReconnectDeadline: game.player1ReconnectDeadline,
+      player2ReconnectDeadline: game.player2ReconnectDeadline,
+      player1ReconnectRemainingMs: game.player1ReconnectRemainingMs,
+      player2ReconnectRemainingMs: game.player2ReconnectRemainingMs,
+      abandonmentSignature: game.abandonmentSignature,
+      stakeAmount: game.stakeAmount,
+      stakeCurrency: game.stakeCurrency
+    })));
+  } catch (error) {
+    console.error('Error fetching active staked matches:', error);
+    res.status(500).json({ error: 'Failed to fetch active staked matches' });
+  }
+});
+
 app.post('/games/:roomCode/refunded', async (req, res) => {
   try {
     const { roomCode } = req.params;
@@ -784,7 +861,13 @@ app.post('/games/:roomCode/refunded', async (req, res) => {
     await escrowVerificationService.verifyRefund({ roomCode, playerAddress });
 
     const game = await Game.findOneAndUpdate(
-      { roomCode, player1Address: playerAddress.toLowerCase() },
+      {
+        roomCode,
+        $or: [
+          { player1Address: playerAddress.toLowerCase() },
+          { player2Address: playerAddress.toLowerCase() }
+        ]
+      },
       {
         status: 'refunded',
         challengeAccepted: false,

@@ -80,6 +80,11 @@ class EscrowVerificationService {
     return diagnostics;
   }
 
+  async getMatch(roomCode) {
+    this.initialize();
+    return this.contract.getMatch(roomCode);
+  }
+
   async fetchConfirmedStakeTransaction(txHash) {
     let lastReceipt = null;
     let lastTransaction = null;
@@ -221,8 +226,11 @@ class EscrowVerificationService {
     if (Number(matchData.status) !== 4) {
       throw new Error('Match has not been refunded on-chain');
     }
-    if (ethers.getAddress(matchData.player1) !== expectedPlayer) {
-      throw new Error('Connected wallet is not Player 1 for this match');
+    const isPlayer1 = ethers.getAddress(matchData.player1) === expectedPlayer;
+    const isPlayer2 = matchData.player2 !== ethers.ZeroAddress &&
+      ethers.getAddress(matchData.player2) === expectedPlayer;
+    if (!isPlayer1 && !isPlayer2) {
+      throw new Error('Connected wallet is not a player in this match');
     }
 
     return true;

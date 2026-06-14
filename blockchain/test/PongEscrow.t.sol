@@ -40,6 +40,7 @@ contract PongEscrowTest is Test {
     event PrizeClaimed(string indexed roomCode, address indexed winner, address indexed stakeToken, uint256 amount, uint256 timestamp);
     event MatchRefunded(string indexed roomCode, address indexed player, address indexed stakeToken, uint256 amount, uint256 timestamp);
     event ExpiredMatchRefunded(string indexed roomCode, address indexed player1, address indexed player2, address stakeToken, uint256 amountEach, uint256 timestamp);
+    event AbandonedMatchRefunded(string indexed roomCode, address indexed player1, address indexed player2, address stakeToken, uint256 amountEach, uint256 timestamp);
 
     // Engagement events
     event PlayerCheckIn(address indexed player, uint256 streak, uint256 timestamp);
@@ -480,6 +481,17 @@ contract PongEscrowTest is Test {
         escrow.claimRefund(ROOM_CODE);
     }
 
+    function test_Native_StakeAsPlayer2RevertsAtJoinDeadline() public {
+        vm.prank(player1);
+        escrow.stakeAsPlayer1{value: STAKE_AMOUNT_NATIVE}(ROOM_CODE, NATIVE_TOKEN, 0);
+
+        vm.warp(block.timestamp + escrow.JOIN_TIMEOUT());
+
+        vm.prank(player2);
+        vm.expectRevert("Join timeout reached");
+        escrow.stakeAsPlayer2{value: STAKE_AMOUNT_NATIVE}(ROOM_CODE, 0);
+    }
+
     // ============ Refund Tests (ERC-20) ============
 
     function test_ERC20_ClaimRefund() public {
@@ -568,6 +580,83 @@ contract PongEscrowTest is Test {
         vm.prank(player3);
         vm.expectRevert("Not a player in this match");
         escrow.claimExpiredMatchRefund(ROOM_CODE);
+    }
+
+    // ============ Abandoned Match Refund Tests ============
+
+    function test_Native_AbandonedMatchRefund() public {
+        _setupCompletedMatch();
+        bytes memory signature = _signAbandonedRefund(ROOM_CODE);
+        uint256 p1Before = player1.balance;
+        uint256 p2Before = player2.balance;
+
+        vm.prank(player1);
+        vm.expectEmit(true, true, true, true);
+        emit AbandonedMatchRefunded(
+            ROOM_CODE,
+            player1,
+            player2,
+            NATIVE_TOKEN,
+            STAKE_AMOUNT_NATIVE,
+            block.timestamp
+        );
+        escrow.claimAbandonedMatchRefund(ROOM_CODE, signature);
+
+        assertEq(player1.balance - p1Before, STAKE_AMOUNT_NATIVE);
+        assertEq(player2.balance - p2Before, STAKE_AMOUNT_NATIVE);
+        assertEq(uint(escrow.getMatchStatus(ROOM_CODE)), uint(PongEscrow.MatchStatus.REFUNDED));
+    }
+
+    function test_ERC20_AbandonedMatchRefund() public {
+        vm.prank(player1);
+        escrow.stakeAsPlayer1(ROOM_CODE, address(cUSD), STAKE_AMOUNT_TOKEN);
+        vm.prank(player2);
+        escrow.stakeAsPlayer2(ROOM_CODE, STAKE_AMOUNT_TOKEN);
+
+        bytes memory signature = _signAbandonedRefund(ROOM_CODE);
+        uint256 p1Before = cUSD.balanceOf(player1);
+        uint256 p2Before = cUSD.balanceOf(player2);
+
+        vm.prank(player2);
+        escrow.claimAbandonedMatchRefund(ROOM_CODE, signature);
+
+        assertEq(cUSD.balanceOf(player1) - p1Before, STAKE_AMOUNT_TOKEN);
+        assertEq(cUSD.balanceOf(player2) - p2Before, STAKE_AMOUNT_TOKEN);
+        assertEq(cUSD.balanceOf(address(escrow)), 0);
+    }
+
+    function test_AbandonedMatchRefundRevertsForInvalidSignature() public {
+        _setupCompletedMatch();
+        uint256 wrongKey = 0xBAD;
+        bytes32 messageHash = _abandonedRefundHash(ROOM_CODE);
+        bytes32 ethSignedHash = keccak256(
+            abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash)
+        );
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(wrongKey, ethSignedHash);
+
+        vm.prank(player1);
+        vm.expectRevert("Invalid signature");
+        escrow.claimAbandonedMatchRefund(ROOM_CODE, abi.encodePacked(r, s, v));
+    }
+
+    function test_AbandonedMatchRefundRevertsForNonPlayer() public {
+        _setupCompletedMatch();
+
+        vm.prank(player3);
+        vm.expectRevert("Not a player in this match");
+        escrow.claimAbandonedMatchRefund(ROOM_CODE, _signAbandonedRefund(ROOM_CODE));
+    }
+
+    function test_AbandonedMatchRefundCannotBeReplayed() public {
+        _setupCompletedMatch();
+        bytes memory signature = _signAbandonedRefund(ROOM_CODE);
+
+        vm.prank(player1);
+        escrow.claimAbandonedMatchRefund(ROOM_CODE, signature);
+
+        vm.prank(player2);
+        vm.expectRevert("Match not eligible for refund");
+        escrow.claimAbandonedMatchRefund(ROOM_CODE, signature);
     }
 
     // ============ Multiple Simultaneous Matches ============
@@ -970,6 +1059,19 @@ contract PongEscrowTest is Test {
         escrow.acceptChallenge(ROOM_CODE);
     }
 
+    function test_AcceptChallengeRevertsWhenStakedMatchJoinWindowExpired() public {
+        vm.prank(player1);
+        escrow.stakeAsPlayer1{value: STAKE_AMOUNT_NATIVE}(ROOM_CODE, NATIVE_TOKEN, 0);
+        vm.prank(player1);
+        escrow.createChallenge(ROOM_CODE, NATIVE_TOKEN, STAKE_AMOUNT_NATIVE);
+
+        vm.warp(block.timestamp + escrow.JOIN_TIMEOUT());
+
+        vm.prank(player2);
+        vm.expectRevert("Join timeout reached");
+        escrow.acceptChallenge(ROOM_CODE);
+    }
+
     function test_AcceptChallengeRevertsAlreadyAccepted() public {
         vm.prank(player1);
         escrow.createChallenge(ROOM_CODE, NATIVE_TOKEN, STAKE_AMOUNT_NATIVE);
@@ -1047,6 +1149,30 @@ contract PongEscrowTest is Test {
     function _signWinner(string memory roomCode, address winner) internal view returns (bytes memory) {
         bytes32 messageHash = keccak256(abi.encodePacked(roomCode, winner));
         bytes32 ethSignedHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(backendPrivateKey, ethSignedHash);
+        return abi.encodePacked(r, s, v);
+    }
+
+    function _abandonedRefundHash(string memory roomCode) internal view returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                block.chainid,
+                address(escrow),
+                "ABANDONED_MATCH_REFUND",
+                roomCode,
+                player1,
+                player2
+            )
+        );
+    }
+
+    function _signAbandonedRefund(string memory roomCode) internal view returns (bytes memory) {
+        bytes32 ethSignedHash = keccak256(
+            abi.encodePacked(
+                "\x19Ethereum Signed Message:\n32",
+                _abandonedRefundHash(roomCode)
+            )
+        );
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(backendPrivateKey, ethSignedHash);
         return abi.encodePacked(r, s, v);
     }

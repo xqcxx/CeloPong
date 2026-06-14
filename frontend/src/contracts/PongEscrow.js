@@ -117,6 +117,16 @@ export const PONG_ESCROW_ABI = [
     stateMutability: 'nonpayable',
     type: 'function',
   },
+  {
+    inputs: [
+      { internalType: 'string', name: 'roomCode', type: 'string' },
+      { internalType: 'bytes', name: 'signature', type: 'bytes' },
+    ],
+    name: 'claimAbandonedMatchRefund',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
   // Admin
   {
     inputs: [{ internalType: 'address', name: 'newOracle', type: 'address' }],
@@ -186,6 +196,19 @@ export const PONG_ESCROW_ABI = [
       { indexed: false, internalType: 'uint256', name: 'timestamp', type: 'uint256' },
     ],
     name: 'MatchRefunded',
+    type: 'event',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, internalType: 'string', name: 'roomCode', type: 'string' },
+      { indexed: true, internalType: 'address', name: 'player1', type: 'address' },
+      { indexed: true, internalType: 'address', name: 'player2', type: 'address' },
+      { indexed: false, internalType: 'address', name: 'stakeToken', type: 'address' },
+      { indexed: false, internalType: 'uint256', name: 'amountEach', type: 'uint256' },
+      { indexed: false, internalType: 'uint256', name: 'timestamp', type: 'uint256' },
+    ],
+    name: 'AbandonedMatchRefunded',
     type: 'event',
   },
   // Engagement — checkIn

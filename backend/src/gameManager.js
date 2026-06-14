@@ -3,7 +3,7 @@ class GameManager {
     this.games = new Map();
   }
 
-  createGame(roomCode, player1, player2) {
+  createGame(roomCode, player1, player2, restoredState = null) {
     const gameState = {
       id: roomCode,
       roomCode,
@@ -11,25 +11,63 @@ class GameManager {
         { ...player1, index: 0, socketId: player1.socketId, pausesRemaining: 2 },
         { ...player2, index: 1, socketId: player2.socketId, pausesRemaining: 2 }
       ],
-      score: [0, 0],
+      score: restoredState?.score || [0, 0],
       ballPos: { x: 0, y: 0 },
       ballVelocity: { x: 0, y: 0 },
-      paddles: {
+      paddles: restoredState?.paddles || {
         player1: { y: 0 },
         player2: { y: 0 }
       },
-      startTime: Date.now(),
-      hits: 0,
+      startTime: restoredState?.startedAt
+        ? new Date(restoredState.startedAt).getTime()
+        : Date.now(),
+      hits: restoredState?.hits || 0,
       status: 'active',
       isPaused: false,
       pausedBy: null,
-      pauseTimeout: null
+      pauseTimeout: null,
+      reconnectPaused: false
     };
 
     this.resetBall(gameState);
     this.games.set(roomCode, gameState);
 
     return gameState;
+  }
+
+  reconnectPlayer(roomCode, walletAddress, socketId) {
+    const game = this.games.get(roomCode);
+    if (!game) return null;
+
+    const player = game.players.find(
+      item => item.walletAddress?.toLowerCase() === walletAddress.toLowerCase()
+    );
+    if (!player) return null;
+    player.socketId = socketId;
+    player.connected = true;
+    return game;
+  }
+
+  disconnectPlayer(roomCode, socketId) {
+    const game = this.games.get(roomCode);
+    if (!game) return null;
+    const player = game.players.find(item => item.socketId === socketId);
+    if (!player) return null;
+    player.connected = false;
+    player.socketId = null;
+    game.isPaused = true;
+    game.reconnectPaused = true;
+    return player;
+  }
+
+  resumeAfterReconnect(roomCode) {
+    const game = this.games.get(roomCode);
+    if (!game || !game.players.every(player => player.connected)) return false;
+    game.ballPos = { x: 0, y: 0 };
+    this.resetBall(game);
+    game.isPaused = false;
+    game.reconnectPaused = false;
+    return true;
   }
 
   getGame(roomCode) {
@@ -82,7 +120,7 @@ class GameManager {
 
   resumeGame(roomCode) {
     const game = this.games.get(roomCode);
-    if (!game) return false;
+    if (!game || game.reconnectPaused) return false;
 
     game.isPaused = false;
     game.pausedBy = null;
