@@ -73,6 +73,8 @@ const MultiplayerGame = ({ username }) => {
   const gameMode = location.state?.gameMode || 'quick';
   const joinRoomCode = location.state?.roomCode;
   const createRoomCode = location.state?.roomCode;
+  const rematchSessionId = location.state?.rematchSessionId;
+  const rematchToken = location.state?.rematchToken;
 
   const drawGame = useCallback((ctx) => {
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -375,6 +377,12 @@ const MultiplayerGame = ({ username }) => {
 
       if (gameMode === 'rejoin-staked') {
         socket.emit('rejoinStakedRoom', { roomCode: joinRoomCode });
+      } else if (gameMode === 'rematch') {
+        socket.emit('enterRematch', {
+          rematchSessionId,
+          rematchToken,
+          player: playerData
+        });
       } else if (gameMode === 'create' || gameMode === 'create-staked') {
         socket.emit('createRoom', playerData, createRoomCode);
       } else if (gameMode === 'join' && joinRoomCode) {
@@ -585,7 +593,18 @@ const MultiplayerGame = ({ username }) => {
       socket.removeAllListeners();
       socket.disconnect();
     };
-  }, [username, gameMode, joinRoomCode, createRoomCode, navigate, notify, address, ensureWalletSession]);
+  }, [
+    username,
+    gameMode,
+    joinRoomCode,
+    createRoomCode,
+    rematchSessionId,
+    rematchToken,
+    navigate,
+    notify,
+    address,
+    ensureWalletSession
+  ]);
 
   useEffect(() => {
     isMounted.current = true;

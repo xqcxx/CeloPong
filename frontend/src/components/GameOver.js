@@ -4,10 +4,14 @@ import { useAccount } from 'wagmi';
 import io from 'socket.io-client';
 import { BACKEND_URL, REMATCH_ROUTE } from '../constants';
 import { useClaimPrize, useGG, useReportMatch } from '../hooks/useContract';
-import { BLOCK_EXPLORER_URL } from '../contracts/PongEscrow';
+import { useApproveToken, useStakeAsPlayer1 } from '../hooks/useContract';
+import { BLOCK_EXPLORER_URL, PONG_ESCROW_ADDRESS } from '../contracts/PongEscrow';
 import '../styles/GameOver.css';
 import { useNotification } from './notifications/NotificationProvider';
 import { isLegacyMatch } from '../utils/resultProof';
+import { CURRENCIES, isNativeToken } from '../config/currencies';
+import { parseUnits } from 'viem';
+import { canRequestRematch, getRematchGameState } from '../utils/rematch';
 
 const REMATCH_REQUEST_EVENT = 'requestRematch';
 const REMATCH_RESPONSE_EVENT = 'rematchResponse';
@@ -32,6 +36,11 @@ const GameOver = ({ savedUsername }) => {
   const [rematchRequested, setRematchRequested] = useState(false);
   const [waitingForResponse, setWaitingForResponse] = useState(false);
   const [rematchResponded, setRematchResponded] = useState(false);
+  const [opponentPresent, setOpponentPresent] = useState(false);
+  const [acceptedRematch, setAcceptedRematch] = useState(null);
+  const [isPreparingStakedRematch, setIsPreparingStakedRematch] = useState(false);
+  const stakedRematchSavedRef = useRef(false);
+  const rematchStakeStartedRef = useRef(false);
 
   // Claim prize hooks
   const { address, isConnected } = useAccount();
@@ -51,6 +60,20 @@ const GameOver = ({ savedUsername }) => {
   const { sendGG, isPending: isGGPending, isSuccess: isGGSuccess, error: ggError } = useGG();
   const { reportMatch, isPending: isReportPending, isSuccess: isReportSuccess, error: reportError } = useReportMatch();
   const [ggSent, setGGSent] = useState(false);
+  const {
+    approve: approveToken,
+    isSuccess: isApprovalSuccess,
+    error: approvalError
+  } = useApproveToken();
+  const {
+    stakeAsPlayer1,
+    hash: rematchStakeHash,
+    isPending: isRematchStakePending,
+    isConfirming: isRematchStakeConfirming,
+    isSuccess: isRematchStakeSuccess,
+    error: rematchStakeError
+  } = useStakeAsPlayer1();
+  const [pendingRematchCurrency, setPendingRematchCurrency] = useState(null);
 
   const isStaked = result?.isStaked || false;
   const isWinner = result?.isWinner || false;
@@ -97,6 +120,20 @@ const GameOver = ({ savedUsername }) => {
 
     socketRef.current = socket;
 
+    socket.on('connect', () => {
+      if (result.rematchSessionId && result.rematchToken) {
+        socket.emit('joinRematchSession', {
+          rematchSessionId: result.rematchSessionId,
+          rematchToken: result.rematchToken
+        });
+      }
+    });
+
+    socket.on('rematchPresence', ({ opponentPresent: present }) => {
+      setOpponentPresent(Boolean(present));
+      if (!present) setWaitingForResponse(false);
+    });
+
     socket.on(REMATCH_REQUESTED_EVENT, () => {
       setRematchRequested(true);
       setWaitingForResponse(false);
@@ -121,6 +158,31 @@ const GameOver = ({ savedUsername }) => {
       notify('Opponent declined rematch', { type: 'info' });
       setWaitingForResponse(false);
       setRematchRequested(false);
+    });
+
+    socket.on('rematchRequestSent', () => {
+      setWaitingForResponse(true);
+    });
+
+    socket.on('rematchUnavailable', ({ message: unavailableMessage }) => {
+      setOpponentPresent(false);
+      setWaitingForResponse(false);
+      notify(unavailableMessage || 'Opponent is no longer available', { type: 'warning' });
+    });
+
+    socket.on('rematchAccepted', (data) => {
+      setWaitingForResponse(false);
+      setRematchRequested(false);
+      setAcceptedRematch(data);
+      if (!data.isStaked) {
+        navigate(REMATCH_ROUTE, { state: getRematchGameState(data) });
+      }
+    });
+
+    socket.on('rematchReady', (data) => {
+      navigate(REMATCH_ROUTE, {
+        state: getRematchGameState({ ...data, isStaked: true })
+      });
     });
 
     return () => {
@@ -200,14 +262,9 @@ const GameOver = ({ savedUsername }) => {
     }
   }, [claimError, claiming]);
 
-  if (!result) {
-    return null;
-  }
-
   const handleRematch = () => {
-    if (socketRef.current) {
+    if (socketRef.current && opponentPresent) {
       socketRef.current.emit(REMATCH_REQUEST_EVENT);
-      setWaitingForResponse(true);
     }
   };
 
@@ -228,6 +285,104 @@ const GameOver = ({ savedUsername }) => {
     }
   };
 
+  const submitStakedRematch = useCallback(async (currency) => {
+    if (!acceptedRematch) return;
+    setIsPreparingStakedRematch(true);
+    await stakeAsPlayer1(
+      acceptedRematch.roomCode,
+      currency,
+      acceptedRematch.stakeAmount
+    );
+  }, [acceptedRematch, stakeAsPlayer1]);
+
+  const handlePrepareStakedRematch = useCallback(async () => {
+    if (!acceptedRematch || acceptedRematch.role !== 'player1') return;
+    const currency = CURRENCIES[acceptedRematch.stakeCurrency] || CURRENCIES.CELO;
+    setPendingRematchCurrency(currency);
+    setIsPreparingStakedRematch(true);
+    try {
+      if (!isNativeToken(currency.tokenAddress)) {
+        const amount = parseUnits(acceptedRematch.stakeAmount, currency.decimals);
+        await approveToken(currency.tokenAddress, PONG_ESCROW_ADDRESS, amount);
+        return;
+      }
+      rematchStakeStartedRef.current = true;
+      await submitStakedRematch(currency);
+    } catch (error) {
+      setIsPreparingStakedRematch(false);
+      notify(error.shortMessage || error.message || 'Unable to prepare rematch stake', { type: 'error' });
+    }
+  }, [acceptedRematch, approveToken, notify, submitStakedRematch]);
+
+  useEffect(() => {
+    if (
+      isApprovalSuccess &&
+      pendingRematchCurrency &&
+      acceptedRematch?.role === 'player1' &&
+      !rematchStakeStartedRef.current
+    ) {
+      rematchStakeStartedRef.current = true;
+      submitStakedRematch(pendingRematchCurrency).catch(error => {
+        rematchStakeStartedRef.current = false;
+        setIsPreparingStakedRematch(false);
+        notify(error.shortMessage || error.message || 'Unable to submit rematch stake', { type: 'error' });
+      });
+    }
+  }, [isApprovalSuccess, pendingRematchCurrency, acceptedRematch, submitStakedRematch, notify]);
+
+  useEffect(() => {
+    if (
+      !isRematchStakeSuccess ||
+      !rematchStakeHash ||
+      !acceptedRematch ||
+      stakedRematchSavedRef.current
+    ) return;
+    stakedRematchSavedRef.current = true;
+
+    fetch(`${BACKEND_URL}/games`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        roomCode: acceptedRematch.roomCode,
+        player1: { name: savedUsername, rating: Number(rating) || 1000 },
+        score: { player1: 0, player2: 0 },
+        isStaked: true,
+        stakeAmount: acceptedRematch.stakeAmount,
+        stakeCurrency: acceptedRematch.stakeCurrency,
+        player1Address: address,
+        player1TxHash: rematchStakeHash,
+        status: 'waiting'
+      })
+    })
+      .then(response => {
+        if (!response.ok) throw new Error('Stake confirmed, but rematch could not be created');
+        socketRef.current?.emit('rematchHostStaked');
+      })
+      .catch(error => {
+        stakedRematchSavedRef.current = false;
+        setIsPreparingStakedRematch(false);
+        notify(error.message, { type: 'error' });
+      });
+  }, [
+    isRematchStakeSuccess,
+    rematchStakeHash,
+    acceptedRematch,
+    savedUsername,
+    rating,
+    address,
+    notify
+  ]);
+
+  useEffect(() => {
+    const transactionError = approvalError || rematchStakeError;
+    if (!transactionError) return;
+    rematchStakeStartedRef.current = false;
+    setIsPreparingStakedRematch(false);
+    notify(transactionError.shortMessage || transactionError.message || 'Staked rematch failed', {
+      type: 'error'
+    });
+  }, [approvalError, rematchStakeError, notify]);
+
   const handleGoHome = () => {
     if (socketRef.current) {
       socketRef.current.emit('leaveRoom');
@@ -238,6 +393,10 @@ const GameOver = ({ savedUsername }) => {
     setRematchResponded(false);
     navigate('/');
   };
+
+  if (!result) {
+    return null;
+  }
 
   return (
     <div className="game-over">
@@ -369,15 +528,60 @@ const GameOver = ({ savedUsername }) => {
 
       {!rematchRequested && (
         <div className="button-group">
+          {acceptedRematch?.isStaked && (
+            <div className="rematch-request">
+              {acceptedRematch.role === 'player1' ? (
+                <>
+                  <p>
+                    You are Player 1. Stake {acceptedRematch.stakeAmount}{' '}
+                    {acceptedRematch.stakeCurrency} to create the new room.
+                  </p>
+                  <button
+                    onClick={handlePrepareStakedRematch}
+                    disabled={
+                      isPreparingStakedRematch ||
+                      isRematchStakePending ||
+                      isRematchStakeConfirming
+                    }
+                    className="accept-btn"
+                  >
+                    {isRematchStakePending
+                      ? 'Confirm Stake...'
+                      : isRematchStakeConfirming
+                        ? 'Confirming...'
+                        : 'Stake for Rematch'}
+                  </button>
+                </>
+              ) : (
+                <p>Waiting for Player 1 to stake and open the new room...</p>
+              )}
+            </div>
+          )}
           {waitingForResponse && <p>{WAITING_TEXT}</p>}
           {rematchResponded && !waitingForResponse && <p>Response sent</p>}
-          <button
-            onClick={handleRematch}
-            disabled={waitingForResponse || rematchResponded}
-            className="rematch-btn"
-          >
-            {waitingForResponse ? WAITING_TEXT : 'Request Rematch'}
-          </button>
+          {!acceptedRematch && (
+            <>
+              <button
+                onClick={handleRematch}
+                disabled={!canRequestRematch({
+                  hasSession: Boolean(result.rematchSessionId && result.rematchToken),
+                  opponentPresent,
+                  waitingForResponse,
+                  rematchResponded
+                })}
+                className="rematch-btn"
+              >
+                {waitingForResponse
+                  ? WAITING_TEXT
+                  : opponentPresent
+                    ? 'Request Rematch'
+                    : 'Opponent Unavailable'}
+              </button>
+              {result.rematchSessionId && !opponentPresent && (
+                <p>Rematch unlocks when your opponent reaches this screen.</p>
+              )}
+            </>
+          )}
           <button onClick={handleGoHome} className="home-btn">
             Back to Home
           </button>

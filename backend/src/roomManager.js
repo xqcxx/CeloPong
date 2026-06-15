@@ -70,6 +70,29 @@ class RoomManager {
     return roomCode;
   }
 
+  createCasualRoomWithCode(roomCode, hostPlayer, hostSocketId) {
+    if (this.rooms.has(roomCode)) {
+      throw new Error('Room code already exists');
+    }
+
+    this.rooms.set(roomCode, {
+      code: roomCode,
+      host: {
+        ...hostPlayer,
+        socketId: hostSocketId,
+        connected: true
+      },
+      guest: null,
+      pendingGuest: null,
+      isStaked: false,
+      spectators: new Set(),
+      status: 'waiting',
+      createdAt: Date.now()
+    });
+    this.playerRooms.set(hostSocketId, roomCode);
+    return roomCode;
+  }
+
   restoreStakedRoom(gameRecord) {
     const roomCode = gameRecord.roomCode;
     const room = {

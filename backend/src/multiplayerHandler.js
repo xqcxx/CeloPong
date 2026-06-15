@@ -6,6 +6,7 @@ const Player = require('./models/Player');
 const signatureService = require('./services/signatureService');
 const escrowVerificationService = require('./services/escrowVerificationService');
 const emitLeaderboardUpdate = require('./utils/emitLeaderboardUpdate');
+const RematchSessionManager = require('./rematchSessionManager');
 
 const RECONNECT_BUDGET_MS = 5 * 60 * 1000;
 const JOIN_TIMEOUT_MS = 10 * 60 * 1000;
@@ -18,6 +19,7 @@ class MultiplayerHandler {
     this.leaderboardManager = new LeaderboardManager();
     this.gameLoops = new Map();
     this.lastPersistedScores = new Map();
+    this.rematchSessions = new RematchSessionManager();
 
     setInterval(() => {
       const removedRooms = this.roomManager.cleanupStaleRooms();
@@ -182,7 +184,22 @@ class MultiplayerHandler {
     });
 
     socket.on('rematchResponse', (data) => {
-      this.handleRematchResponse(socket, data);
+      this.handleRematchResponse(socket, data).catch(error => {
+        console.error('Failed to process rematch response:', error);
+        socket.emit('rematchUnavailable', { message: 'Unable to create a rematch room' });
+      });
+    });
+
+    socket.on('joinRematchSession', (data) => {
+      this.handleJoinRematchSession(socket, data);
+    });
+
+    socket.on('enterRematch', (data) => {
+      this.handleEnterRematch(socket, data);
+    });
+
+    socket.on('rematchHostStaked', () => {
+      this.handleRematchHostStaked(socket);
     });
 
     socket.on('leaveRoom', () => {
@@ -807,6 +824,13 @@ class MultiplayerHandler {
       // Continue with normal game end flow even if save fails
     }
 
+    const rematchSession = this.rematchSessions.createSession({
+      roomCode,
+      players: game.players,
+      isStaked: gameRecord?.isStaked || false,
+      stakeAmount: gameRecord?.stakeAmount || null,
+      stakeCurrency: gameRecord?.stakeCurrency || 'CELO'
+    });
     const gameOverData = {
       roomCode,
       winner: winner.socketId,
@@ -833,7 +857,15 @@ class MultiplayerHandler {
     };
 
     try {
-      this.io.to(roomCode).emit('gameOver', gameOverData);
+      const playerSocketIds = game.players.map(player => player.socketId).filter(Boolean);
+      game.players.forEach((player, index) => {
+        const participant = rematchSession.players[index];
+        this.io.to(player.socketId).emit('gameOver', {
+          ...gameOverData,
+          ...this.rematchSessions.getClientData(rematchSession, participant)
+        });
+      });
+      this.io.to(roomCode).except(playerSocketIds).emit('gameOver', gameOverData);
 
       const leaderboard = await this.leaderboardManager.getTopPlayers(10);
       emitLeaderboardUpdate(this.io, leaderboard);
@@ -955,44 +987,150 @@ class MultiplayerHandler {
   }
 
   handleRematchRequest(socket) {
-    const room = this.roomManager.getRoomByPlayer(socket.id);
-    if (!room) return;
+    const result = this.rematchSessions.request(socket.id);
+    if (!result.success) {
+      socket.emit('rematchUnavailable', { message: result.error });
+      return;
+    }
+    this.io.to(result.opponent.socketId).emit('rematchRequested', {
+      from: result.requester.name
+    });
+    socket.emit('rematchRequestSent');
+  }
 
-    const playerIndex = room.host.socketId === socket.id ? 0 : 1;
-    const opponent = playerIndex === 0 ? room.guest : room.host;
+  async handleRematchResponse(socket, { accepted }) {
+    const result = this.rematchSessions.respond(socket.id, Boolean(accepted));
+    if (!result.success) {
+      socket.emit('rematchUnavailable', { message: result.error });
+      return;
+    }
 
-    if (!opponent) return;
+    if (!result.accepted) {
+      for (const participant of result.session.players) {
+        if (participant.socketId) {
+          this.io.to(participant.socketId).emit('rematchDeclined');
+        }
+      }
+      return;
+    }
 
-    const opponentSocket = this.io.sockets.sockets.get(opponent.socketId);
-    if (opponentSocket) {
-      opponentSocket.emit('rematchRequested', {
-        from: playerIndex === 0 ? room.host.name : room.guest.name
-      });
+    while (
+      this.roomManager.getRoom(result.session.roomCode) ||
+      await Game.exists({ roomCode: result.session.roomCode })
+    ) {
+      result.session.roomCode = this.rematchSessions.generateRoomCode();
+    }
+
+    for (const participant of result.session.players) {
+      this.emitRematchAccepted(result.session, participant);
     }
   }
 
-  handleRematchResponse(socket, { accepted }) {
-    const room = this.roomManager.getRoomByPlayer(socket.id);
-    if (!room) return;
-
-    if (accepted) {
-      this.roomManager.startGame(room.code);
-
-      const gameState = this.gameManager.createGame(
-        room.code,
-        room.host,
-        room.guest
-      );
-
-      this.io.to(room.code).emit('gameStart', gameState);
-      this.startGameLoop(room.code);
-    } else {
-      this.io.to(room.code).emit('rematchDeclined');
+  handleJoinRematchSession(socket, { rematchSessionId, rematchToken }) {
+    const result = this.rematchSessions.join(rematchSessionId, rematchToken, socket.id);
+    if (!result.success) {
+      socket.emit('rematchUnavailable', { message: result.error });
+      return;
     }
+    this.emitRematchPresence(result.session);
+    if (result.session.accepted) {
+      this.emitRematchAccepted(result.session, result.participant);
+      if (result.session.isStaked && result.session.stakeReady) {
+        this.emitStakedRematchReady(result.session, result.participant);
+      }
+    }
+  }
+
+  handleEnterRematch(socket, { rematchSessionId, rematchToken, player }) {
+    const result = this.rematchSessions.enterGame(
+      rematchSessionId,
+      rematchToken,
+      socket.id,
+      player
+    );
+    if (!result.success) {
+      socket.emit('error', { message: result.error });
+      return;
+    }
+    if (!result.ready) {
+      socket.emit('waitingForOpponent', { roomCode: result.session.roomCode });
+      return;
+    }
+
+    const { session, requester, responder } = result;
+    this.roomManager.createCasualRoomWithCode(
+      session.roomCode,
+      requester.playerData,
+      requester.gameSocketId
+    );
+    this.roomManager.joinRoom(
+      session.roomCode,
+      responder.playerData,
+      responder.gameSocketId
+    );
+    const requesterSocket = this.io.sockets.sockets.get(requester.gameSocketId);
+    const responderSocket = this.io.sockets.sockets.get(responder.gameSocketId);
+    requesterSocket?.join(session.roomCode);
+    responderSocket?.join(session.roomCode);
+    this.startGame(session.roomCode);
+    this.rematchSessions.deleteSession(session.id);
+  }
+
+  handleRematchHostStaked(socket) {
+    const membership = this.rematchSessions.getBySocket(socket.id);
+    if (
+      !membership ||
+      !membership.session.accepted ||
+      !membership.session.isStaked ||
+      membership.session.requesterId !== membership.participant.id
+    ) {
+      socket.emit('rematchUnavailable', { message: 'Staked rematch is not ready' });
+      return;
+    }
+
+    membership.session.stakeReady = true;
+    for (const participant of membership.session.players) {
+      this.emitStakedRematchReady(membership.session, participant);
+    }
+  }
+
+  emitRematchPresence(session) {
+    for (const participant of session.players) {
+      if (!participant.socketId) continue;
+      this.io.to(participant.socketId).emit(
+        'rematchPresence',
+        this.rematchSessions.presence(session, participant)
+      );
+    }
+  }
+
+  emitRematchAccepted(session, participant) {
+    if (!participant.socketId) return;
+    this.io.to(participant.socketId).emit('rematchAccepted', {
+      ...this.rematchSessions.getClientData(session, participant),
+      roomCode: session.roomCode,
+      role: participant.id === session.requesterId ? 'player1' : 'player2',
+      isStaked: session.isStaked,
+      stakeAmount: session.stakeAmount,
+      stakeCurrency: session.stakeCurrency
+    });
+  }
+
+  emitStakedRematchReady(session, participant) {
+    if (!participant.socketId) return;
+    this.io.to(participant.socketId).emit('rematchReady', {
+      roomCode: session.roomCode,
+      role: participant.id === session.requesterId ? 'player1' : 'player2',
+      isStaked: true
+    });
   }
 
   async handleDisconnect(socket) {
     this.handleLeaveSpectate(socket);
+    const rematchMembership = this.rematchSessions.disconnect(socket.id);
+    if (rematchMembership) {
+      this.emitRematchPresence(rematchMembership.session);
+    }
 
     const reservedRoom = this.roomManager.getReservedRoomBySocket(socket.id);
     if (reservedRoom) {

@@ -111,3 +111,14 @@ test('disconnecting a staked host preserves the room', () => {
   assert.equal(manager.getRoom('ABC123').host.connected, false);
   assert.equal(manager.getRoom('ABC123').host.socketId, null);
 });
+
+test('a casual rematch can create a predetermined fresh room code', () => {
+  const manager = new RoomManager();
+  manager.createCasualRoomWithCode('NEW123', { name: 'requester' }, 'requester-socket');
+  const joined = manager.joinRoom('NEW123', { name: 'responder' }, 'responder-socket');
+
+  assert.equal(joined.success, true);
+  assert.equal(joined.room.isStaked, false);
+  assert.equal(joined.room.host.name, 'requester');
+  assert.equal(joined.room.guest.name, 'responder');
+});
