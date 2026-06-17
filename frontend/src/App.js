@@ -9,7 +9,7 @@ import GameHistory from './components/GameHistory';
 import { Web3Provider } from './components/Web3Provider';
 import { NotificationProvider } from './components/notifications/NotificationProvider';
 import './styles/App.css';
-import { BACKEND_URL, STORAGE_KEY } from './constants';
+import { BACKEND_URL, LOBBY_ROUTE, STORAGE_KEY } from './constants';
 
 function AppContent() {
   const { address, isConnected } = useAccount();
@@ -72,6 +72,16 @@ function AppContent() {
           <Routes>
             <Route
               path="/"
+              element={
+                <Welcome
+                  setGameState={setGameState}
+                  savedUsername={username}
+                  onUsernameSet={handleUsernameSet}
+                />
+              }
+            />
+            <Route
+              path={LOBBY_ROUTE}
               element={
                 <Welcome
                   setGameState={setGameState}

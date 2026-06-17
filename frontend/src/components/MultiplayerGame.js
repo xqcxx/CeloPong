@@ -4,7 +4,7 @@ import { useAccount } from 'wagmi';
 import { parseUnits } from 'viem';
 import io from 'socket.io-client';
 import '../styles/Game.css';
-import { BACKEND_URL, INITIAL_RATING } from '../constants';
+import { BACKEND_URL, INITIAL_RATING, LOBBY_ROUTE } from '../constants';
 import soundManager from '../utils/soundManager';
 import { useStakeAsPlayer2, useApproveToken } from '../hooks/useContract';
 import { CURRENCIES, isNativeToken } from '../config/currencies';
@@ -546,12 +546,12 @@ const MultiplayerGame = ({ username }) => {
 
     socket.on('rematchDeclined', () => {
       notify('Rematch declined', { type: 'info' });
-      navigate('/');
+      navigate(LOBBY_ROUTE);
     });
 
     socket.on('opponentLeft', () => {
       notify('Opponent left the game', { type: 'warning' });
-      navigate('/');
+      navigate(LOBBY_ROUTE);
     });
 
     socket.on('opponentDisconnected', (data) => {
@@ -563,7 +563,7 @@ const MultiplayerGame = ({ username }) => {
       } else {
         notify('Opponent disconnected', { type: 'warning' });
       }
-      navigate('/');
+      navigate(LOBBY_ROUTE);
     });
 
     socket.on('opponentReconnectPending', (data) => {
@@ -581,7 +581,7 @@ const MultiplayerGame = ({ username }) => {
         type: 'warning',
         duration: 0
       });
-      navigate('/');
+      navigate(LOBBY_ROUTE);
     });
 
     socket.on('error', (error) => {
@@ -610,7 +610,7 @@ const MultiplayerGame = ({ username }) => {
     isMounted.current = true;
 
     if (!username) {
-      navigate('/');
+      navigate(LOBBY_ROUTE);
       return;
     }
 
@@ -621,7 +621,7 @@ const MultiplayerGame = ({ username }) => {
       })
       .catch(error => {
         notify(error.message || 'Unable to connect to the staked room.', { type: 'error' });
-        navigate('/');
+        navigate(LOBBY_ROUTE);
       });
 
     return () => {
@@ -743,7 +743,7 @@ const MultiplayerGame = ({ username }) => {
           duration: 8000
         });
       }
-      navigate('/');
+      navigate(LOBBY_ROUTE);
     }
   }, [navigate, stakedRoomState, gameMode, isWaiting, notify, confirm]);
 
@@ -910,7 +910,7 @@ const MultiplayerGame = ({ username }) => {
                       setStakingData(null);
                       setStakingErrorMessage(null);
                       setLastPlayer2StakeTxHash(null);
-                      navigate('/');
+        navigate(LOBBY_ROUTE);
                     }}
                     className="decline-btn"
                   >
@@ -945,7 +945,7 @@ const MultiplayerGame = ({ username }) => {
                       setShowPlayer2StakingModal(false);
                       setStakingData(null);
                       setStakingErrorMessage(null);
-                      navigate('/');
+      navigate(LOBBY_ROUTE);
                     }}
                     className="decline-btn"
                   >

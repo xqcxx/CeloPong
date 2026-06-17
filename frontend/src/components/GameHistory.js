@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAccount } from 'wagmi';
-import { BACKEND_URL, PRIZE_MULTIPLIER } from '../constants';
+import { BACKEND_URL, LOBBY_ROUTE, PRIZE_MULTIPLIER } from '../constants';
 import { BLOCK_EXPLORER_URL } from '../contracts/PongEscrow';
 import { useClaimPrize } from '../hooks/useContract';
 import { createPaginationState, mergePages, shouldResetPagination } from '../utils';
@@ -180,7 +180,7 @@ const GameHistory = ({ savedUsername }) => {
     return (
       <div className="game-history-container">
         <div className="game-history-header">
-          <button onClick={() => navigate('/')} className="back-button">Back</button>
+          <button onClick={() => navigate(LOBBY_ROUTE)} className="back-button">Back</button>
           <h1>Game History</h1>
         </div>
         <div className="no-username-prompt">Set your username to view game history.</div>
@@ -191,7 +191,7 @@ const GameHistory = ({ savedUsername }) => {
   return (
     <div className="game-history-container">
       <div className="game-history-header">
-        <button onClick={() => navigate('/')} className="back-button">Back</button>
+        <button onClick={() => navigate(LOBBY_ROUTE)} className="back-button">Back</button>
         <h1>Game History</h1>
         <p className="username-display">{savedUsername}</p>
       </div>
