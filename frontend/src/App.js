@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAccount } from 'wagmi';
+import LandingPage from './components/LandingPage';
 import Welcome from './components/Welcome';
 import MultiplayerGame from './components/MultiplayerGame';
 import SpectatorView from './components/SpectatorView';
@@ -72,13 +73,7 @@ function AppContent() {
           <Routes>
             <Route
               path="/"
-              element={
-                <Welcome
-                  setGameState={setGameState}
-                  savedUsername={username}
-                  onUsernameSet={handleUsernameSet}
-                />
-              }
+              element={<LandingPage />}
             />
             <Route
               path={LOBBY_ROUTE}
