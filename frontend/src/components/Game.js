@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAccount } from 'wagmi';
 import io from 'socket.io-client';
 import '../styles/Game.css';
-import { BACKEND_URL, INITIAL_RATING } from '../constants';
+import { BACKEND_URL, INITIAL_RATING, LOBBY_ROUTE } from '../constants';
 import soundManager from '../utils/soundManager';
 import { useStakeAsPlayer2 } from '../hooks/useContract';
 import { useNotification } from './notifications/NotificationProvider';
@@ -869,7 +869,7 @@ const Game = ({ username }) => {
                       onClick={() => {
                         setShowStakingModal(false);
                         setStakingData(null);
-                        navigate('/');
+                        navigate(LOBBY_ROUTE);
                       }}
                       style={{
                         fontFamily: 'Press Start 2P, monospace',
@@ -939,7 +939,7 @@ const Game = ({ username }) => {
                       setStakingData(null);
                       setStakingInProgress(false);
                       setPlayer2StakingErrorMessage(null);
-                      navigate('/');
+                      navigate(LOBBY_ROUTE);
                     }}
                     style={{
                       fontFamily: 'Press Start 2P, monospace',

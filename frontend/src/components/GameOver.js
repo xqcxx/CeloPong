@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAccount } from 'wagmi';
 import io from 'socket.io-client';
-import { BACKEND_URL, REMATCH_ROUTE } from '../constants';
+import { BACKEND_URL, LOBBY_ROUTE, REMATCH_ROUTE } from '../constants';
 import { useClaimPrize, useGG, useReportMatch } from '../hooks/useContract';
 import { useApproveToken, useStakeAsPlayer1 } from '../hooks/useContract';
 import { BLOCK_EXPLORER_URL, PONG_ESCROW_ADDRESS } from '../contracts/PongEscrow';
@@ -101,13 +101,13 @@ const GameOver = ({ savedUsername }) => {
 
   useEffect(() => {
     if (!result) {
-      navigate('/');
+      navigate(LOBBY_ROUTE);
       return;
     }
 
     const username = savedUsername;
     if (!username) {
-      navigate('/');
+      navigate(LOBBY_ROUTE);
       return;
     }
 
@@ -391,7 +391,7 @@ const GameOver = ({ savedUsername }) => {
     setRematchRequested(false);
     setWaitingForResponse(false);
     setRematchResponded(false);
-    navigate('/');
+    navigate(LOBBY_ROUTE);
   };
 
   if (!result) {

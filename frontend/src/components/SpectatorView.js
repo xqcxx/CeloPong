@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import io from 'socket.io-client';
 import '../styles/Game.css';
-import { BACKEND_URL } from '../constants';
+import { BACKEND_URL, LOBBY_ROUTE } from '../constants';
 import { useNotification } from './notifications/NotificationProvider';
 
 const SpectatorView = () => {
@@ -64,14 +64,14 @@ const SpectatorView = () => {
       socketRef.current.emit('leaveSpectate');
       socketRef.current.disconnect();
     }
-    navigate('/');
+    navigate(LOBBY_ROUTE);
   }, [navigate]);
 
   useEffect(() => {
     isMounted.current = true;
 
     if (!roomCode || !spectatorName) {
-      navigate('/');
+      navigate(LOBBY_ROUTE);
       return;
     }
 
@@ -106,13 +106,13 @@ const SpectatorView = () => {
     socket.on('gameOver', (result) => {
       console.log('Game over:', result);
       notify('Game has ended!', { type: 'info' });
-      navigate('/');
+      navigate(LOBBY_ROUTE);
     });
 
     socket.on('error', (error) => {
       console.error('Spectator error:', error);
       notify('Error: ' + error.message, { type: 'error' });
-      navigate('/');
+      navigate(LOBBY_ROUTE);
     });
 
     return () => {
