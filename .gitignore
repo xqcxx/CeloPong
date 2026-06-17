@@ -1,10 +1,20 @@
 node_modules/
 .env
+.env.key
 !.env.example
 .gitmodules
 package-lock.json
 build/
 
-# Auto-player (local only)
-scripts/
+# Auto-player source is tracked; local runtime data remains private.
+scripts/*
+!scripts/auto-player/
+!scripts/auto-player/**
+scripts/auto-player/.env
+scripts/auto-player/names.json
+scripts/auto-player/logs/
+scripts/auto-player/node_modules/
 .vercel
+
+# BatchTransfer contract (deployed separately, not part of the escrow system)
+blockchain/src/BatchTransfer.sol
