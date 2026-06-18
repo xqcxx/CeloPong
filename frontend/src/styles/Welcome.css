@@ -882,6 +882,80 @@ dialog.stake-modal h2 {
   text-align: right;
 }
 
+.stake-gas-panel {
+  background: rgba(53,208,127,0.08);
+  border: 1px solid rgba(53,208,127,0.2);
+  border-radius: 8px;
+  margin-bottom: 15px;
+  padding: 12px;
+}
+
+.stake-gas-panel label {
+  color: #888;
+  display: block;
+  font-size: 0.72rem;
+  letter-spacing: 0.5px;
+  line-height: 1.5;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.stake-gas-panel select {
+  background: #1a1a1a;
+  border: 1px solid #35D07F;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 8px 12px;
+  width: 100%;
+}
+
+.stake-gas-panel p {
+  color: #aaa;
+  font-size: 0.62rem;
+  line-height: 1.6;
+  margin: 0.75rem 0 0;
+}
+
+.stake-challenge-panel {
+  align-items: flex-start;
+  background: rgba(53,208,127,0.08);
+  border: 1px solid rgba(53,208,127,0.25);
+  border-radius: 8px;
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 10px;
+  padding: 0.9rem;
+}
+
+.stake-challenge-panel input {
+  accent-color: #35D07F;
+  cursor: pointer;
+  flex: 0 0 auto;
+  height: 18px;
+  margin-top: 0.1rem;
+  width: 18px;
+}
+
+.stake-challenge-panel label {
+  color: #aaa;
+  cursor: pointer;
+  display: grid;
+  gap: 0.45rem;
+  line-height: 1.6;
+}
+
+.stake-challenge-panel strong {
+  color: #35D07F;
+  font-size: 0.72rem;
+}
+
+.stake-challenge-panel span {
+  font-size: 0.62rem;
+}
+
 .currency-option {
   align-items: center;
   display: flex;
@@ -965,6 +1039,58 @@ dialog.stake-modal h2 {
   line-height: 1.5;
 }
 
+.transaction-step-label {
+  border: 1px solid rgba(253,208,64,0.65);
+  border-radius: 999px;
+  color: rgb(253,208,64);
+  display: inline-flex;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.55rem;
+  line-height: 1.5;
+  margin-bottom: 1rem;
+  padding: 0.35rem 0.65rem;
+}
+
+.transaction-summary {
+  background: rgba(116,113,203,0.12);
+  border: 1px solid rgba(116,113,203,0.5);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.75rem;
+  margin: -0.5rem 0 1.5rem;
+  padding: 1rem;
+}
+
+.transaction-summary div {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.transaction-summary span {
+  color: #aaa;
+  font-size: 0.58rem;
+  line-height: 1.5;
+}
+
+.transaction-summary strong {
+  color: rgb(253,208,64);
+  font-size: 0.65rem;
+  line-height: 1.5;
+  text-align: right;
+}
+
+.transaction-help {
+  margin-top: 1.5rem;
+}
+
+.transaction-token-line {
+  color: #888 !important;
+  font-size: 0.72rem !important;
+  margin-top: 0.75rem !important;
+}
+
 /* Transaction Spinner */
 .transaction-spinner {
   width: 60px;
@@ -1023,5 +1149,15 @@ dialog.stake-modal h2 {
 
   .transaction-modal h3 {
     font-size: 0.8rem;
+  }
+
+  .transaction-summary div {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .transaction-summary strong {
+    text-align: left;
   }
 } 
