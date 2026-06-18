@@ -512,18 +512,15 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
     }).join('');
 
     const gasSelector = supportsFeeAbstraction() ? `
-      <div style="margin-bottom: 15px; padding: 12px; background: rgba(53,208,127,0.08); border-radius: 8px; border: 1px solid rgba(53,208,127,0.2);">
-        <label style="display: block; margin-bottom: 6px; color: #888; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;">
-          Pay gas with
+      <div class="stake-gas-panel">
+        <label for="gas-token-select">
+          Network fee token
         </label>
-        <select id="gas-token-select" style="
-          width: 100%; padding: 8px 12px; background: #1a1a1a; border: 1px solid #35D07F;
-          border-radius: 6px; color: #fff; font-size: 0.85rem; cursor: pointer;
-          font-family: inherit;
-        ">
+        <select id="gas-token-select">
           <option value="">CELO (default)</option>
           <option value="cUSD">cUSD</option>
         </select>
+        <p>Choose which supported token pays the Celo network fee. Your stake token and amount stay the same.</p>
       </div>
     ` : '';
 
@@ -560,10 +557,11 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
             Use Custom Amount
           </button>
         </div>
-        <div style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px; padding: 8px 0;">
-          <input type="checkbox" id="make-challenge-checkbox" style="width: 18px; height: 18px; accent-color: #35D07F; cursor: pointer;" />
-          <label for="make-challenge-checkbox" style="color: #aaa; font-size: 0.75rem; cursor: pointer;">
-            Make this a public challenge (visible in the challenge board)
+        <div class="stake-challenge-panel">
+          <input type="checkbox" id="make-challenge-checkbox" />
+          <label for="make-challenge-checkbox">
+            <strong>Public challenge</strong>
+            <span>List this room on the challenge board so another player can join with the same token and stake amount.</span>
           </label>
         </div>
         <div class="buttons" style="margin-top: 20px;">
@@ -713,6 +711,10 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
       showCurrencyPicker();
     });
   };
+
+  const activeStakeQuote = selectedCurrency && selectedStakeAmount
+    ? getStakeQuote(selectedStakeAmount, selectedCurrency)
+    : null;
 
   return (
     <div className="welcome">
@@ -871,7 +873,7 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
                         fontSize: '0.8rem'
                       }}
                     >
-                      Retry
+                      Retry Stake
                     </button>
                     <button
                       onClick={() => {
@@ -899,13 +901,30 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
                 </>
               ) : (
                 <>
+                  <span className="transaction-step-label">
+                    {stakingConfirmed && 'Complete'}
+                    {!stakingConfirmed && approvalStep && 'Approve token'}
+                    {!stakingConfirmed && !approvalStep && 'Stake funds'}
+                  </span>
                   <h3>
-                    {stakingConfirmed && 'Transaction Confirmed!'}
-                    {!stakingConfirmed && approvalStep && isApprovalPending && 'Step 1/2: Approve Token in Wallet...'}
-                    {!stakingConfirmed && approvalStep && isApprovalConfirming && 'Step 1/2: Approval Confirming...'}
-                    {!stakingConfirmed && !approvalStep && isStakingPending && 'Step ' + (selectedCurrency && !isNativeToken(selectedCurrency.tokenAddress) ? '2/2' : '1/1') + ': Confirm Stake in Wallet...'}
-                    {!stakingConfirmed && !approvalStep && isStakingConfirming && 'Stake Confirming...'}
+                    {stakingConfirmed && 'Stake Confirmed'}
+                    {!stakingConfirmed && approvalStep && isApprovalPending && 'Approve Spending in Wallet'}
+                    {!stakingConfirmed && approvalStep && isApprovalConfirming && 'Approval Confirming'}
+                    {!stakingConfirmed && !approvalStep && isStakingPending && 'Confirm Stake in Wallet'}
+                    {!stakingConfirmed && !approvalStep && isStakingConfirming && 'Stake Confirming'}
                   </h3>
+                  {activeStakeQuote && (
+                    <div className="transaction-summary">
+                      <div>
+                        <span>Your stake</span>
+                        <strong>{activeStakeQuote.stake} {activeStakeQuote.symbol}</strong>
+                      </div>
+                      <div>
+                        <span>Winner pot</span>
+                        <strong>{activeStakeQuote.pot} {activeStakeQuote.symbol}</strong>
+                      </div>
+                    </div>
+                  )}
                   {!stakingConfirmed && <div className="transaction-spinner"></div>}
                   {stakingConfirmed ? (
                     <>
@@ -930,16 +949,16 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
                       </p>
                     </>
                   ) : (
-                    <p>
-                      {approvalStep && isApprovalPending && 'Approve the contract to use your ' + (selectedCurrency?.symbol || '')}
-                      {approvalStep && isApprovalConfirming && 'Waiting for approval confirmation...'}
-                      {!approvalStep && isStakingPending && 'Confirm the stake transaction in your wallet'}
-                      {!approvalStep && isStakingConfirming && 'Waiting for blockchain confirmation...'}
+                    <p className="transaction-help">
+                      {approvalStep && isApprovalPending && 'First, allow the escrow contract to use this token for the stake.'}
+                      {approvalStep && isApprovalConfirming && 'Approval is submitted. Waiting for the blockchain confirmation before staking.'}
+                      {!approvalStep && isStakingPending && 'Now confirm the stake transaction that locks your funds for this match.'}
+                      {!approvalStep && isStakingConfirming && 'Stake submitted. Waiting for the blockchain to confirm the room.'}
                     </p>
                   )}
                   {selectedCurrency && !stakingConfirmed && (
-                    <p style={{ fontSize: '0.8rem', color: '#888', marginTop: '10px' }}>
-                      Staking {selectedStakeAmount} {selectedCurrency.symbol} {selectedCurrency.icon}
+                    <p className="transaction-token-line">
+                      {selectedCurrency.icon} {selectedCurrency.symbol} staked match
                     </p>
                   )}
                 </>
