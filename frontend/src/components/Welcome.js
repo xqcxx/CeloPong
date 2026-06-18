@@ -435,12 +435,81 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
     }
   };
 
+  const getCurrencyBalance = (currency) => {
+    if (!isConnected || !balances || !currency?.key) {
+      return null;
+    }
+
+    const balance = balances[currency.key];
+    if (balance === null || balance === undefined || balance === '') {
+      return null;
+    }
+
+    const numericBalance = Number(balance);
+    return Number.isFinite(numericBalance) ? numericBalance : null;
+  };
+
+  const formatTokenAmount = (amount) => {
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount)) {
+      return '0';
+    }
+
+    return numericAmount.toLocaleString(undefined, {
+      maximumFractionDigits: numericAmount < 1 ? 6 : 4
+    });
+  };
+
+  const getStakeQuote = (stakeAmount, currency) => {
+    const numericStake = Number(stakeAmount);
+    if (!Number.isFinite(numericStake) || numericStake <= 0) {
+      return null;
+    }
+
+    return {
+      stake: formatTokenAmount(numericStake),
+      match: formatTokenAmount(numericStake),
+      pot: formatTokenAmount(numericStake * 2),
+      symbol: currency.symbol
+    };
+  };
+
+  const canAffordStake = (stakeAmount, currency) => {
+    const balance = getCurrencyBalance(currency);
+    if (balance === null) {
+      return true;
+    }
+
+    const numericStake = Number(stakeAmount);
+    return Number.isFinite(numericStake) && numericStake <= balance;
+  };
+
   const showStakeAmountModal = (currency) => {
     const modal = document.createElement('dialog');
     modal.className = 'stake-modal';
-    const presets = currency.presets.map(v =>
-      `<button type="button" class="stake-option" data-amount="${v}">${v} ${currency.symbol}</button>`
-    ).join('');
+    const balance = getCurrencyBalance(currency);
+    const balanceText = balance === null
+      ? 'Balance unavailable'
+      : `${formatTokenAmount(balance)} ${currency.symbol} available`;
+    const defaultQuote = getStakeQuote(currency.presets[0], currency);
+    const presets = currency.presets.map(v => {
+      const quote = getStakeQuote(v, currency);
+      const isDisabled = !canAffordStake(v, currency);
+
+      return `
+        <button
+          type="button"
+          class="stake-option ${isDisabled ? 'is-disabled' : ''}"
+          data-amount="${v}"
+          ${isDisabled ? 'disabled title="Insufficient balance"' : ''}
+        >
+          <span>${v} ${currency.symbol}</span>
+          <span class="stake-option-meta">
+            ${isDisabled ? 'Low balance' : `Pot ${quote.pot} ${currency.symbol}`}
+          </span>
+        </button>
+      `;
+    }).join('');
 
     const gasSelector = supportsFeeAbstraction() ? `
       <div style="margin-bottom: 15px; padding: 12px; background: rgba(53,208,127,0.08); border-radius: 8px; border: 1px solid rgba(53,208,127,0.2);">
@@ -461,7 +530,23 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
     modal.innerHTML = `
       <form method="dialog">
         <h2>${currency.icon} Stake ${currency.symbol}</h2>
-        <p style="margin-bottom: 20px; color: #888;">Choose how much to stake</p>
+        <p class="stake-balance-line">${balanceText}</p>
+        ${defaultQuote ? `
+          <div class="stake-summary" id="stake-summary">
+            <div>
+              <span>You stake</span>
+              <strong id="stake-summary-you">${defaultQuote.stake} ${defaultQuote.symbol}</strong>
+            </div>
+            <div>
+              <span>Opponent matches</span>
+              <strong id="stake-summary-opponent">${defaultQuote.match} ${defaultQuote.symbol}</strong>
+            </div>
+            <div>
+              <span>Winner claims</span>
+              <strong id="stake-summary-pot">${defaultQuote.pot} ${defaultQuote.symbol}</strong>
+            </div>
+          </div>
+        ` : ''}
         ${gasSelector}
         <div class="stake-options">${presets}</div>
         <div style="margin: 20px 0; padding: 15px; background: rgba(116,113,203,0.1); border-radius: 8px;">
@@ -497,8 +582,26 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
     const errorDiv = modal.querySelector('#custom-amount-error');
     const gasSelect = modal.querySelector('#gas-token-select');
     const makeChallengeCheckbox = modal.querySelector('#make-challenge-checkbox');
+    const summaryYou = modal.querySelector('#stake-summary-you');
+    const summaryOpponent = modal.querySelector('#stake-summary-opponent');
+    const summaryPot = modal.querySelector('#stake-summary-pot');
 
-    customInput.oninput = () => { customInput.style.borderColor = 'rgb(116,113,203)'; errorDiv.style.display = 'none'; };
+    const updateStakeSummary = (stakeAmount) => {
+      const quote = getStakeQuote(stakeAmount, currency);
+      if (!quote || !summaryYou || !summaryOpponent || !summaryPot) {
+        return;
+      }
+
+      summaryYou.textContent = `${quote.stake} ${quote.symbol}`;
+      summaryOpponent.textContent = `${quote.match} ${quote.symbol}`;
+      summaryPot.textContent = `${quote.pot} ${quote.symbol}`;
+    };
+
+    customInput.oninput = () => {
+      customInput.style.borderColor = 'rgb(116,113,203)';
+      errorDiv.style.display = 'none';
+      updateStakeSummary(customInput.value);
+    };
 
     const getFeeCurrency = () => {
       if (!gasSelect) return null;
@@ -523,11 +626,21 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
         errorDiv.style.display = 'block';
         return;
       }
+      if (!canAffordStake(amt, currency)) {
+        customInput.style.borderColor = '#ff6b6b';
+        errorDiv.textContent = `You only have ${balanceText}`;
+        errorDiv.style.display = 'block';
+        return;
+      }
       handleStake(amt.toString());
     };
 
     modal.querySelectorAll('.stake-option').forEach(btn => {
-      btn.onclick = () => handleStake(btn.getAttribute('data-amount'));
+      btn.onclick = () => {
+        const stakeAmount = btn.getAttribute('data-amount');
+        updateStakeSummary(stakeAmount);
+        handleStake(stakeAmount);
+      };
     });
   };
 
@@ -542,16 +655,21 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
         <p style="margin-bottom: 20px; color: #888;">Your opponent must stake the same currency</p>
         <div class="stake-options" style="display: flex; flex-direction: column; gap: 10px;">
           ${currencies.map(c => {
-            const bal = balances?.[c.key];
-            const balStr = isConnected && bal !== null
-              ? `<span style="color: #35D07F; font-size: 0.8rem;"> &mdash; ${bal} ${c.symbol}</span>`
-              : '';
+            const bal = getCurrencyBalance(c);
+            const balStr = bal !== null
+              ? `${formatTokenAmount(bal)} ${c.symbol}`
+              : 'Balance unavailable';
+            const statusClass = bal !== null && bal > 0 ? 'is-funded' : 'is-low';
+            const statusLabel = bal !== null && bal > 0 ? 'Available' : 'Low balance';
             return `
-              <button type="button" class="stake-option currency-${c.key}" data-currency="${c.key}" style="display: flex; align-items: center; gap: 12px; padding: 16px; text-align: left;">
+              <button type="button" class="stake-option currency-option currency-${c.key}" data-currency="${c.key}">
                 <span style="font-size: 1.8rem;">${c.icon}</span>
-                <div>
-                  <div style="font-weight: bold; color: #fff;">${c.name}${balStr}</div>
-                  <div style="font-size: 0.75rem; color: #888;">${c.symbol}</div>
+                <div class="currency-option-copy">
+                  <div style="font-weight: bold; color: #fff;">${c.name}</div>
+                  <div class="currency-balance-row">
+                    <span>${balStr}</span>
+                    <span class="currency-balance-badge ${statusClass}">${statusLabel}</span>
+                  </div>
                 </div>
               </button>
             `;
