@@ -88,8 +88,33 @@ async function authenticateToken(token) {
   return session?.walletAddress || null;
 }
 
+async function createMiniPaySession(walletAddress) {
+  if (!ethers.isAddress(walletAddress)) {
+    throw new Error('Valid wallet address is required');
+  }
+
+  const normalized = walletAddress.toLowerCase();
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+
+  await WalletSession.findOneAndUpdate(
+    { walletAddress: normalized },
+    {
+      walletAddress: normalized,
+      challenge: null,
+      challengeExpiresAt: null,
+      tokenHash: tokenHash(token),
+      tokenExpiresAt: expiresAt
+    },
+    { upsert: true, new: true }
+  );
+
+  return { token, walletAddress: normalized, expiresAt };
+}
+
 module.exports = {
   createChallenge,
   verifyChallenge,
+  createMiniPaySession,
   authenticateToken
 };

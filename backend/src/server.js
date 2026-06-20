@@ -1,6 +1,18 @@
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
 
+async function bootstrap() {
+  const encryptedEnvPath = path.resolve(__dirname, '..', '.env.enc');
+  const { loadBackendEnvironment } = require('../loadEncryptedEnv');
+  const environment = await loadBackendEnvironment({
+    encryptedFile: encryptedEnvPath
+  });
+  if (environment.source === 'encrypted') {
+    console.log(
+      `Loaded ${environment.loadedKeys.length} encrypted environment variables`
+    );
+  }
+
 const express = require('express');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
@@ -220,9 +232,15 @@ app.get('/auth/wallet-challenge/:walletAddress', async (req, res) => {
 
 app.post('/auth/wallet-session', async (req, res) => {
   try {
-    res.status(200).json(
-      await walletSessionService.verifyChallenge(req.body)
-    );
+    if (req.body.miniPay && req.body.walletAddress) {
+      res.status(200).json(
+        await walletSessionService.createMiniPaySession(req.body.walletAddress)
+      );
+    } else {
+      res.status(200).json(
+        await walletSessionService.verifyChallenge(req.body)
+      );
+    }
   } catch (error) {
     res.status(401).json({ error: error.message });
   }
@@ -268,25 +286,32 @@ app.post('/players/register-username', async (req, res) => {
     const rawName = typeof req.body.name === 'string' ? req.body.name.trim() : '';
     const walletAddress = req.body.walletAddress;
     const signature = req.body.signature;
+    const isMiniPay = Boolean(req.body.miniPay);
 
     if (!/^[a-zA-Z0-9_-]{2,15}$/.test(rawName)) {
       return res.status(400).json({
         error: 'Username must be 2-15 characters using letters, numbers, _ or -'
       });
     }
-    if (!ethers.isAddress(walletAddress) || !signature) {
-      return res.status(400).json({ error: 'Wallet address and signature are required' });
+    if (!ethers.isAddress(walletAddress)) {
+      return res.status(400).json({ error: 'Valid wallet address is required' });
+    }
+    if (!isMiniPay && !signature) {
+      return res.status(400).json({ error: 'Wallet signature is required' });
     }
 
     const normalizedWallet = walletAddress.toLowerCase();
     const nameKey = rawName.toLowerCase();
-    const recoveredAddress = ethers.verifyMessage(
-      usernameRegistrationMessage(normalizedWallet, rawName),
-      signature
-    ).toLowerCase();
 
-    if (recoveredAddress !== normalizedWallet) {
-      return res.status(401).json({ error: 'Invalid wallet signature' });
+    if (!isMiniPay) {
+      const recoveredAddress = ethers.verifyMessage(
+        usernameRegistrationMessage(normalizedWallet, rawName),
+        signature
+      ).toLowerCase();
+
+      if (recoveredAddress !== normalizedWallet) {
+        return res.status(401).json({ error: 'Invalid wallet signature' });
+      }
     }
 
     const walletPlayer = await Player.findOne({ walletAddress: normalizedWallet });
@@ -1033,4 +1058,10 @@ try {
 } catch (error) {
   console.error('Failed to start server:', error);
   process.exit(1);
-} 
+}
+}
+
+bootstrap().catch((error) => {
+  console.error('Failed to load backend environment:', error.message);
+  process.exit(1);
+});
