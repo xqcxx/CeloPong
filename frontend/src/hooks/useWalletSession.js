@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { useAccount, useSignMessage } from 'wagmi';
 import { BACKEND_URL } from '../constants';
+import { isMiniPay } from '../utils/minipay';
 
 const STORAGE_PREFIX = 'pong-it-wallet-session';
 
@@ -32,8 +33,23 @@ export function useWalletSession() {
     const stored = getStoredWalletSession(address);
     if (stored) return stored.token;
 
+    if (isMiniPay()) {
+      const sessionResponse = await fetch(BACKEND_URL + '/auth/wallet-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ walletAddress: address, miniPay: true })
+      });
+      const session = await sessionResponse.json();
+      if (!sessionResponse.ok) {
+        throw new Error(session.error || 'Unable to authenticate wallet session.');
+      }
+
+      sessionStorage.setItem(storageKey(address), JSON.stringify(session));
+      return session.token;
+    }
+
     const challengeResponse = await fetch(
-      `${BACKEND_URL}/auth/wallet-challenge/${address}`
+      BACKEND_URL + '/auth/wallet-challenge/' + address
     );
     if (!challengeResponse.ok) {
       throw new Error('Unable to create wallet session challenge.');
@@ -41,7 +57,7 @@ export function useWalletSession() {
     const challenge = await challengeResponse.json();
     const signature = await signMessageAsync({ message: challenge.message });
 
-    const sessionResponse = await fetch(`${BACKEND_URL}/auth/wallet-session`, {
+    const sessionResponse = await fetch(BACKEND_URL + '/auth/wallet-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ walletAddress: address, signature })

@@ -289,24 +289,29 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
       const submitButton = form.querySelector('button[type="submit"]');
       const username = document.getElementById('username').value.trim();
       const normalizedAddress = address.toLowerCase();
-      const message = [
-        'PONG-IT username registration',
-        `Wallet: ${normalizedAddress}`,
-        `Username: ${username}`
-      ].join('\n');
 
       submitButton.disabled = true;
-      submitButton.textContent = 'SIGN WALLET...';
+      submitButton.textContent = inMiniPay ? 'Registering...' : 'SIGN WALLET...';
 
       try {
-        const signature = await signMessageAsync({ message });
-        const response = await fetch(`${BACKEND_URL}/players/register-username`, {
+        let signature = null;
+        if (!inMiniPay) {
+          const message = [
+            'PONG-IT username registration',
+            'Wallet: ' + normalizedAddress,
+            'Username: ' + username
+          ].join('\n');
+          signature = await signMessageAsync({ message });
+        }
+
+        const response = await fetch(BACKEND_URL + '/players/register-username', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: username,
             walletAddress: normalizedAddress,
-            signature
+            signature: signature || undefined,
+            miniPay: inMiniPay || undefined
           })
         });
         const body = await response.json().catch(() => ({}));
@@ -316,7 +321,7 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
 
         onUsernameSet(body.name);
         callback(body.name);
-        notify(`Username ${body.name} is linked to your wallet.`, { type: 'success' });
+        notify('Username ' + body.name + ' is linked to your wallet.', { type: 'success' });
         modal.remove();
       } catch (error) {
         notify(error.message || 'Username registration failed', {
