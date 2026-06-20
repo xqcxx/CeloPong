@@ -5,6 +5,11 @@ import { PONG_ESCROW_ADDRESS, PONG_ESCROW_ABI } from '../contracts/PongEscrow';
 import { isNativeToken, CURRENCIES } from '../config/currencies';
 import { ENVIRONMENT, IS_MAINNET } from '../config/env';
 import { getResultProofArgs } from '../utils/resultProof';
+import { isMiniPay } from '../utils/minipay';
+
+function minipayLegacyType() {
+  return isMiniPay() ? { type: 'legacy' } : {};
+}
 
 function getRpcUrls(chain) {
   return chain?.rpcUrls?.default?.http || chain?.rpcUrls?.public?.http || [];
@@ -124,6 +129,7 @@ export function useApproveToken() {
         abi: erc20Abi,
         functionName: 'approve',
         args: [spender, amountWei],
+        ...minipayLegacyType(),
       });
     } catch (err) {
       console.error('Error approving token:', err);
@@ -153,6 +159,7 @@ export function useStakeAsPlayer1() {
         abi: PONG_ESCROW_ABI,
         functionName: 'stakeAsPlayer1',
         args: [roomCode, currency.tokenAddress || '0x0000000000000000000000000000000000000000', amount],
+        ...minipayLegacyType(),
       };
 
       if (isNativeToken(currency.tokenAddress)) {
@@ -218,6 +225,7 @@ export function useStakeAsPlayer2() {
         abi: PONG_ESCROW_ABI,
         functionName: 'stakeAsPlayer2',
         args: [roomCode, amount],
+        ...minipayLegacyType(),
       };
 
       if (isNativeToken(currency.tokenAddress)) {
@@ -285,6 +293,7 @@ export function useClaimPrize() {
         abi: PONG_ESCROW_ABI,
         functionName: 'claimPrize',
         args: proofArgs,
+        ...minipayLegacyType(),
       };
       if (feeCurrencyAddress) {
         txOpts.feeCurrency = feeCurrencyAddress;
@@ -353,6 +362,7 @@ export function useClaimRefund() {
         abi: PONG_ESCROW_ABI,
         functionName: 'claimRefund',
         args: [roomCode],
+        ...minipayLegacyType(),
       };
       if (feeCurrencyAddress) {
         txOpts.feeCurrency = feeCurrencyAddress;
@@ -377,6 +387,7 @@ export function useClaimAbandonedMatchRefund() {
       abi: PONG_ESCROW_ABI,
       functionName: 'claimAbandonedMatchRefund',
       args: [roomCode, signature],
+      ...minipayLegacyType(),
     });
   };
 
@@ -433,6 +444,7 @@ export function useCheckIn() {
     await writeContract({
       address: PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
       functionName: 'checkIn',
+      ...minipayLegacyType(),
     });
   };
 
@@ -449,6 +461,7 @@ export function useClaimDailyReward() {
     await writeContract({
       address: PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
       functionName: 'claimDailyReward',
+      ...minipayLegacyType(),
     });
   };
 
@@ -465,6 +478,7 @@ export function usePracticeMode() {
     await writeContract({
       address: PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
       functionName: 'practiceMode',
+      ...minipayLegacyType(),
     });
   };
 
@@ -481,6 +495,7 @@ export function useGG() {
     return writeContractAsync({
       address: PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
       functionName: 'gg', args: getResultProofArgs(result),
+      ...minipayLegacyType(),
     });
   };
 
@@ -498,6 +513,7 @@ export function useCreateChallenge() {
       address: PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
       functionName: 'createChallenge',
       args: [roomCode, tokenAddress || '0x0000000000000000000000000000000000000000', amountWei],
+      ...minipayLegacyType(),
     });
   };
 
@@ -512,6 +528,7 @@ export function useAcceptChallenge() {
     await writeContract({
       address: PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
       functionName: 'acceptChallenge', args: [roomCode],
+      ...minipayLegacyType(),
     });
   };
 
@@ -529,6 +546,7 @@ export function useReportMatch() {
     return writeContractAsync({
       address: PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
       functionName: 'reportMatch', args: [roomCode, score1, score2, winner, reason, signature],
+      ...minipayLegacyType(),
     });
   };
 
