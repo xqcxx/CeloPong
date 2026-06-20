@@ -10,7 +10,8 @@ import { useStakeAsPlayer2, useApproveToken } from '../hooks/useContract';
 import { CURRENCIES, isNativeToken } from '../config/currencies';
 import { PONG_ESCROW_ADDRESS } from '../contracts/PongEscrow';
 import { useNotification } from './notifications/NotificationProvider';
-import { useWalletSession, useTouchDevice } from '../hooks';
+import { useWalletSession } from '../hooks/useWalletSession';
+import { useTouchDevice } from '../hooks';
 import TouchControls from './TouchControls';
 
 const MultiplayerGame = ({ username }) => {

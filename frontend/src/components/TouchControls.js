@@ -33,7 +33,7 @@ export default function TouchControls({ socketRef, isWaiting }) {
         socketRef.current.emit('paddleMove', { position: newY });
       }, 16);
     }
-  }, [isWaiting]);
+  }, [isWaiting, socketRef]);
 
   const stopMove = useCallback(() => {
     setActiveZone(null);
