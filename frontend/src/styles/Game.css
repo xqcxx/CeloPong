@@ -765,3 +765,55 @@ body .endgame-container > *,
 .back-button:active {
   transform: scale(0.95);
 }
+
+/* Touch controls overlay for mobile play */
+.touch-controls {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 12px;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.touch-zone {
+  pointer-events: auto;
+  width: 72px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(116, 113, 203, 0.45);
+  border-radius: 16px;
+  background: rgba(116, 113, 203, 0.12);
+  color: rgba(116, 113, 203, 0.7);
+  font-size: 1.6rem;
+  font-family: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  user-select: none;
+  transition: background 0.1s ease, border-color 0.1s ease, box-shadow 0.1s ease;
+}
+
+.touch-zone:active,
+.touch-zone.touch-active {
+  background: rgba(116, 113, 203, 0.35);
+  border-color: rgb(116, 113, 203);
+  box-shadow: 0 0 18px rgba(116, 113, 203, 0.5);
+  color: rgba(255, 255, 255, 0.9);
+  transform: scale(0.95);
+}
+
+.touch-zone-arrow {
+  pointer-events: none;
+  text-shadow: 0 0 6px rgba(116, 113, 203, 0.6);
+  line-height: 1;
+}
+
+/* Hide keyboard hint on touch devices */
+.game-container.touch-device .controls-hint {
+  display: none;
+}
