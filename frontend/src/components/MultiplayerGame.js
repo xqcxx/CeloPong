@@ -10,7 +10,8 @@ import { useStakeAsPlayer2, useApproveToken } from '../hooks/useContract';
 import { CURRENCIES, isNativeToken } from '../config/currencies';
 import { PONG_ESCROW_ADDRESS } from '../contracts/PongEscrow';
 import { useNotification } from './notifications/NotificationProvider';
-import { useWalletSession } from '../hooks/useWalletSession';
+import { useWalletSession, useTouchDevice } from '../hooks';
+import TouchControls from './TouchControls';
 
 const MultiplayerGame = ({ username }) => {
   const canvasRef = useRef(null);
@@ -46,6 +47,8 @@ const MultiplayerGame = ({ username }) => {
   const prevGameDataRef = useRef(null);
   const isMounted = useRef(false);
   const cursorTimeoutRef = useRef(null);
+
+  const isTouchDevice = useTouchDevice();
 
   // Keyboard control state
   const [keyboardPaddleY, setKeyboardPaddleY] = useState(0);
@@ -769,7 +772,11 @@ const MultiplayerGame = ({ username }) => {
     (stakedRoomState ? !stakedRoomState.player2Address : isWaiting);
 
   return (
-    <div className="game-container" ref={containerRef} style={{ touchAction: 'none' }}>
+    <div
+      className={`game-container${isTouchDevice ? ' touch-device' : ''}`}
+      ref={containerRef}
+      style={{ touchAction: 'none' }}
+    >
       <button onClick={handleLeaveGame} className="back-button" aria-label="Leave game">
         {isSoloStakedRoom ? 'Leave Room' : '← Back'}
       </button>
@@ -797,20 +804,28 @@ const MultiplayerGame = ({ username }) => {
 
       {!isWaiting && (
         <>
-          <div className="controls-hint" style={{
-            position: 'absolute',
-            top: '10px',
-            right: '10px',
-            fontSize: '12px',
-            color: 'rgba(255, 255, 255, 0.6)',
-            fontFamily: 'monospace',
-            textAlign: 'right',
-            lineHeight: '1.4'
-          }}>
-            <div>🎮 Controls:</div>
-            <div>↑↓ Arrow Keys</div>
-            <div>or Mouse</div>
-          </div>
+          {!isTouchDevice && (
+            <div className="controls-hint" style={{
+              position: 'absolute',
+              top: '10px',
+              right: '10px',
+              fontSize: '12px',
+              color: 'rgba(255, 255, 255, 0.6)',
+              fontFamily: 'monospace',
+              textAlign: 'right',
+              lineHeight: '1.4'
+            }}>
+              <div>🎮 Controls:</div>
+              <div>↑↓ Arrow Keys</div>
+              <div>or Mouse</div>
+            </div>
+          )}
+          {isTouchDevice && (
+            <TouchControls
+              socketRef={socketRef}
+              isWaiting={isWaiting}
+            />
+          )}
           <div className="game-controls">
             <button
               onClick={handlePauseGame}
