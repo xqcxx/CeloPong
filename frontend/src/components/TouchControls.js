@@ -1,8 +1,9 @@
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 
 const MOVE_SPEED = 0.05;
 
 export default function TouchControls({ socketRef, isWaiting }) {
+  const [activeZone, setActiveZone] = useState(null);
   const activeZoneRef = useRef(null);
   const paddleYRef = useRef(0);
   const intervalRef = useRef(null);
@@ -17,6 +18,7 @@ export default function TouchControls({ socketRef, isWaiting }) {
   const startMove = useCallback((zone) => {
     if (isWaiting || !socketRef.current) return;
 
+    setActiveZone(zone);
     activeZoneRef.current = zone;
 
     if (!intervalRef.current) {
@@ -34,12 +36,14 @@ export default function TouchControls({ socketRef, isWaiting }) {
   }, [isWaiting]);
 
   const stopMove = useCallback(() => {
+    setActiveZone(null);
     activeZoneRef.current = null;
     clearIntervalRef();
   }, [clearIntervalRef]);
 
   useEffect(() => {
     return () => {
+      setActiveZone(null);
       activeZoneRef.current = null;
       clearIntervalRef();
     };
@@ -60,7 +64,7 @@ export default function TouchControls({ socketRef, isWaiting }) {
     <div className="touch-controls" aria-label="Touch game controls">
       <button
         type="button"
-        className="touch-zone touch-zone-up"
+        className={`touch-zone touch-zone-up${activeZone === 'up' ? ' touch-active' : ''}`}
         onTouchStart={handleTouchStart('up')}
         onTouchEnd={handleTouchEnd}
         onTouchCancel={handleTouchEnd}
@@ -70,7 +74,7 @@ export default function TouchControls({ socketRef, isWaiting }) {
       </button>
       <button
         type="button"
-        className="touch-zone touch-zone-down"
+        className={`touch-zone touch-zone-down${activeZone === 'down' ? ' touch-active' : ''}`}
         onTouchStart={handleTouchStart('down')}
         onTouchEnd={handleTouchEnd}
         onTouchCancel={handleTouchEnd}
