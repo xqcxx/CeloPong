@@ -1,3 +1,4 @@
+/* global BigInt */
 import { formatEther, parseEther } from 'viem';
 
 const ZERO = 0n;
@@ -17,8 +18,11 @@ function safeParseEther(value) {
 
 function toBigInt(value) {
   if (typeof value === 'bigint') return value;
-  if (typeof value === 'number') return 2n; // fallback — multiplier is always 2
-  return 2n;
+  // Honor whole, non-negative numeric multipliers instead of forcing 2×
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
+    return BigInt(value);
+  }
+  return 2n; // fallback default multiplier
 }
 export function computePrizeFromStake(stakeAmount, multiplier = 2n) {
   const stakeWei = safeParseEther(stakeAmount);
@@ -39,7 +43,7 @@ export function computePrizeFromStake(stakeAmount, multiplier = 2n) {
 
 // Helper to trim formatted ETH decimals without trailing zeros
 function trimDecimals(value, digits = 4) {
-  if (!value.includes('.')) {
+  if (typeof value !== 'string' || !value.includes('.')) {
     return value;
   }
 
@@ -50,10 +54,24 @@ function trimDecimals(value, digits = 4) {
 }
 
 export function formatWeiToEth(weiValue, digits = 4) {
-  return trimDecimals(formatEther(weiValue), digits);
+  let wei;
+  if (typeof weiValue === 'bigint') {
+    wei = weiValue;
+  } else {
+    // Coerce integer-like wei values; anything unparseable formats as 0
+    try {
+      wei = BigInt(weiValue);
+    } catch {
+      return '0';
+    }
+  }
+  return trimDecimals(formatEther(wei), digits);
 }
 
 export function sumWei(values) {
+  if (!Array.isArray(values)) {
+    return ZERO;
+  }
   return values.reduce((acc, value) => {
     if (typeof value === 'bigint') {
       return acc + value;

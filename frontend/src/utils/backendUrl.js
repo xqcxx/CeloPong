@@ -34,7 +34,8 @@ function sanitizeUrl(url) {
     return null;
   }
 
-  const trimmed = url.replace(/\/+$/, '');
+  // Trim surrounding whitespace (common in copy-pasted env values) then drop trailing slashes
+  const trimmed = String(url).trim().replace(/\/+$/, '');
 
   if (!isValidUrl(trimmed)) {
     console.warn('[BACKEND_URL] Ignoring invalid URL', trimmed);
