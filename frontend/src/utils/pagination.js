@@ -28,9 +28,9 @@ export function mergePages(existingItems, newItems, key = '_id', options = {}) {
 }
 
 export function shouldResetPagination(offset) {
-  // Interpret undefined/null/'0' as needing a reset
+  // Reset for the first page: undefined/null/'0', NaN, or any non-positive offset
   const numericOffset = Number(offset);
-  return !numericOffset || numericOffset === 0;
+  return !Number.isFinite(numericOffset) || numericOffset <= 0;
 }
 
 export function createPaginationState(limit = 50) {

@@ -7,7 +7,11 @@ export const RESULT_REASON_CODES = Object.freeze({
 });
 
 export const addressesMatch = (first, second) =>
-  Boolean(first && second && first.toLowerCase() === second.toLowerCase());
+  Boolean(
+    first &&
+    second &&
+    String(first).toLowerCase() === String(second).toLowerCase()
+  );
 
 export const isLegacyMatch = (game) =>
   Boolean(

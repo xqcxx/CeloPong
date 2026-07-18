@@ -61,6 +61,12 @@ export function getCurrencyByKey(key) {
   return CURRENCIES[key] || null;
 }
 
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
 export function isNativeToken(tokenAddress) {
-  return tokenAddress === null || tokenAddress === '0x0000000000000000000000000000000000000000';
+  if (tokenAddress === null || tokenAddress === undefined) {
+    return true;
+  }
+  // Compare case-insensitively so checksummed addresses match the sentinel
+  return String(tokenAddress).toLowerCase() === ZERO_ADDRESS;
 }

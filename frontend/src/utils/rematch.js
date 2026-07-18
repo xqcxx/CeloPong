@@ -10,7 +10,7 @@ export const canRequestRematch = ({
   !rematchResponded
 );
 
-export function getRematchGameState(accepted) {
+export function getRematchGameState(accepted = {}) {
   if (accepted.isStaked) {
     return {
       gameMode: accepted.role === 'player1' ? 'create-staked' : 'join',
