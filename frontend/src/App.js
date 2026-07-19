@@ -7,6 +7,8 @@ import MultiplayerGame from './components/MultiplayerGame';
 import SpectatorView from './components/SpectatorView';
 import GameOver from './components/GameOver';
 import GameHistory from './components/GameHistory';
+import WeeklyRewards from './components/WeeklyRewards';
+import AdminRewards from './components/AdminRewards';
 import { Web3Provider } from './components/Web3Provider';
 import { NotificationProvider } from './components/notifications/NotificationProvider';
 import './styles/App.css';
@@ -121,6 +123,14 @@ function AppContent() {
             <Route
               path="/game-history"
               element={<GameHistory savedUsername={username} />}
+            />
+            <Route
+              path="/rewards"
+              element={<WeeklyRewards />}
+            />
+            <Route
+              path="/admin/rewards"
+              element={<AdminRewards />}
             />
           </Routes>
         </div>

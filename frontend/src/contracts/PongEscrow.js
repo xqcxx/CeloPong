@@ -305,6 +305,121 @@ export const PONG_ESCROW_ABI = [
     stateMutability: 'view',
     type: 'function',
   },
+  // Weekly rewards — owner
+  {
+    inputs: [],
+    name: 'owner',
+    outputs: [{ internalType: 'address', name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  // Weekly rewards — rewardPool balance per token
+  {
+    inputs: [{ internalType: 'address', name: '', type: 'address' }],
+    name: 'rewardPool',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  // Weekly rewards — getApprovedReward
+  {
+    inputs: [
+      { internalType: 'string', name: 'weekKey', type: 'string' },
+      { internalType: 'address', name: 'player', type: 'address' },
+      { internalType: 'address', name: 'token', type: 'address' },
+    ],
+    name: 'getApprovedReward',
+    outputs: [
+      { internalType: 'uint256', name: 'amount', type: 'uint256' },
+      { internalType: 'bool', name: 'withdrawn', type: 'bool' },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  // Weekly rewards — fundRewardPool (owner)
+  {
+    inputs: [
+      { internalType: 'address', name: 'token', type: 'address' },
+      { internalType: 'uint256', name: 'amount', type: 'uint256' },
+    ],
+    name: 'fundRewardPool',
+    outputs: [],
+    stateMutability: 'payable',
+    type: 'function',
+  },
+  // Weekly rewards — withdrawRewardPool (owner, drain to any wallet)
+  {
+    inputs: [
+      { internalType: 'address', name: 'token', type: 'address' },
+      { internalType: 'uint256', name: 'amount', type: 'uint256' },
+      { internalType: 'address', name: 'to', type: 'address' },
+    ],
+    name: 'withdrawRewardPool',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  // Weekly rewards — approveReward (owner)
+  {
+    inputs: [
+      { internalType: 'string', name: 'weekKey', type: 'string' },
+      { internalType: 'address', name: 'player', type: 'address' },
+      { internalType: 'address', name: 'token', type: 'address' },
+      { internalType: 'uint256', name: 'amount', type: 'uint256' },
+    ],
+    name: 'approveReward',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  // Weekly rewards — withdrawReward (player)
+  {
+    inputs: [
+      { internalType: 'string', name: 'weekKey', type: 'string' },
+      { internalType: 'address', name: 'token', type: 'address' },
+    ],
+    name: 'withdrawReward',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  // Weekly rewards — events
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, internalType: 'address', name: 'token', type: 'address' },
+      { indexed: true, internalType: 'address', name: 'funder', type: 'address' },
+      { indexed: false, internalType: 'uint256', name: 'amount', type: 'uint256' },
+      { indexed: false, internalType: 'uint256', name: 'newBalance', type: 'uint256' },
+      { indexed: false, internalType: 'uint256', name: 'timestamp', type: 'uint256' },
+    ],
+    name: 'RewardPoolFunded',
+    type: 'event',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, internalType: 'string', name: 'weekKey', type: 'string' },
+      { indexed: true, internalType: 'address', name: 'player', type: 'address' },
+      { indexed: true, internalType: 'address', name: 'token', type: 'address' },
+      { indexed: false, internalType: 'uint256', name: 'amount', type: 'uint256' },
+      { indexed: false, internalType: 'uint256', name: 'timestamp', type: 'uint256' },
+    ],
+    name: 'WeeklyRewardApproved',
+    type: 'event',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, internalType: 'string', name: 'weekKey', type: 'string' },
+      { indexed: true, internalType: 'address', name: 'player', type: 'address' },
+      { indexed: true, internalType: 'address', name: 'token', type: 'address' },
+      { indexed: false, internalType: 'uint256', name: 'amount', type: 'uint256' },
+      { indexed: false, internalType: 'uint256', name: 'timestamp', type: 'uint256' },
+    ],
+    name: 'WeeklyRewardWithdrawn',
+    type: 'event',
+  },
 ];
 
 // Match status enum

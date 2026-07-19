@@ -769,6 +769,9 @@ const Welcome = ({ setGameState, savedUsername, onUsernameSet }) => {
             📊 History
           </button>
         )}
+        <button onClick={() => navigate('/rewards')} className="game-history-btn">
+          🏆 Rewards
+        </button>
       </div>
 
       {/* Engagement Buttons */}

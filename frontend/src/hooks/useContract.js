@@ -552,3 +552,87 @@ export function useReportMatch() {
 
   return { reportMatch, hash, isPending, isConfirming, isSuccess, error };
 }
+
+// ============ Weekly Rewards ============
+
+// Player withdraws an admin-approved weekly reward.
+export function useWithdrawWeeklyReward() {
+  const { data: hash, writeContractAsync, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const withdrawReward = async (weekKey, tokenAddress) => {
+    return writeContractAsync({
+      address: PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
+      functionName: 'withdrawReward',
+      args: [weekKey, tokenAddress || '0x0000000000000000000000000000000000000000'],
+      ...minipayLegacyType(),
+    });
+  };
+
+  return { withdrawReward, hash, isPending, isConfirming, isSuccess, error };
+}
+
+// Admin funds the reward pool for a token (native or ERC-20).
+export function useFundRewardPool() {
+  const { data: hash, writeContractAsync, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const fundRewardPool = async (tokenAddress, amountWei) => {
+    const token = tokenAddress || '0x0000000000000000000000000000000000000000';
+    const txOpts = {
+      address: PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
+      functionName: 'fundRewardPool', args: [token, amountWei],
+      ...minipayLegacyType(),
+    };
+    if (isNativeToken(tokenAddress)) {
+      txOpts.value = amountWei;
+    }
+    return writeContractAsync(txOpts);
+  };
+
+  return { fundRewardPool, hash, isPending, isConfirming, isSuccess, error };
+}
+
+// Admin approves a player's weekly reward so they can withdraw it.
+export function useApproveReward() {
+  const { data: hash, writeContractAsync, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const approveReward = async (weekKey, player, tokenAddress, amountWei) => {
+    return writeContractAsync({
+      address: PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
+      functionName: 'approveReward',
+      args: [weekKey, player, tokenAddress || '0x0000000000000000000000000000000000000000', amountWei],
+      ...minipayLegacyType(),
+    });
+  };
+
+  return { approveReward, hash, isPending, isConfirming, isSuccess, error };
+}
+
+// Admin drains reward pool funds to a provided wallet.
+export function useWithdrawRewardPool() {
+  const { data: hash, writeContractAsync, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const withdrawRewardPool = async (tokenAddress, amountWei, to) => {
+    return writeContractAsync({
+      address: PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
+      functionName: 'withdrawRewardPool',
+      args: [tokenAddress || '0x0000000000000000000000000000000000000000', amountWei, to],
+      ...minipayLegacyType(),
+    });
+  };
+
+  return { withdrawRewardPool, hash, isPending, isConfirming, isSuccess, error };
+}
+
+// Read the current reward pool balance for a token.
+export function useRewardPoolBalance(tokenAddress) {
+  return useReadContract({
+    address: PONG_ESCROW_ADDRESS,
+    abi: PONG_ESCROW_ABI,
+    functionName: 'rewardPool',
+    args: [tokenAddress || '0x0000000000000000000000000000000000000000'],
+  });
+}
