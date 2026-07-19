@@ -114,6 +114,17 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
 
     mapping(string => MatchScore) public matchScores;
 
+    // ============ Weekly Reward State ============
+
+    /// @notice Deployer-funded reward pool balance per token (address(0) = native CELO)
+    mapping(address => uint256) public rewardPool;
+
+    /// @notice Admin-approved reward amount; key = keccak256(weekKey, player, token)
+    mapping(bytes32 => uint256) public approvedReward;
+
+    /// @notice Whether an approved reward has been withdrawn; key = keccak256(weekKey, player, token)
+    mapping(bytes32 => bool) public rewardWithdrawn;
+
     // ============ Events ============
 
     event MatchCreated(
@@ -218,6 +229,40 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
         address indexed reporter,
         uint8 score1,
         uint8 score2,
+        uint256 timestamp
+    );
+
+    // ============ Weekly Reward Events ============
+
+    event RewardPoolFunded(
+        address indexed token,
+        address indexed funder,
+        uint256 amount,
+        uint256 newBalance,
+        uint256 timestamp
+    );
+
+    event RewardPoolWithdrawn(
+        address indexed token,
+        address indexed to,
+        uint256 amount,
+        uint256 newBalance,
+        uint256 timestamp
+    );
+
+    event WeeklyRewardApproved(
+        string indexed weekKey,
+        address indexed player,
+        address indexed token,
+        uint256 amount,
+        uint256 timestamp
+    );
+
+    event WeeklyRewardWithdrawn(
+        string indexed weekKey,
+        address indexed player,
+        address indexed token,
+        uint256 amount,
         uint256 timestamp
     );
 
@@ -512,6 +557,118 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
         _unpause();
     }
 
+    // ============ Weekly Reward Functions ============
+
+    /**
+     * @notice Deployer funds the weekly reward pool for a token
+     * @param token  ERC-20 token address, or address(0) for native CELO
+     * @param amount Amount to add to the pool (must equal msg.value when native)
+     */
+    function fundRewardPool(address token, uint256 amount)
+        external
+        payable
+        onlyOwner
+        nonReentrant
+    {
+        require(amount > 0, "Amount must be positive");
+
+        if (token == NATIVE_TOKEN) {
+            require(msg.value == amount, "Value must match amount");
+        } else {
+            require(msg.value == 0, "Native value not accepted for token");
+            IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        }
+
+        rewardPool[token] += amount;
+
+        emit RewardPoolFunded(token, msg.sender, amount, rewardPool[token], block.timestamp);
+    }
+
+    /**
+     * @notice Deployer drains funds from the reward pool to any wallet
+     * @param token  ERC-20 token address, or address(0) for native CELO
+     * @param amount Amount to withdraw
+     * @param to     Recipient wallet
+     */
+    function withdrawRewardPool(address token, uint256 amount, address to)
+        external
+        onlyOwner
+        nonReentrant
+    {
+        require(amount > 0, "Amount must be positive");
+        require(to != address(0), "Invalid recipient");
+        require(rewardPool[token] >= amount, "Insufficient pool balance");
+
+        rewardPool[token] -= amount;
+        _transferTo(to, token, amount);
+
+        emit RewardPoolWithdrawn(token, to, amount, rewardPool[token], block.timestamp);
+    }
+
+    /**
+     * @notice Deployer approves a weekly leaderboard reward for a player to withdraw
+     * @dev Approval does NOT reserve pool funds; the pool can still be drained.
+     *      Setting amount to 0 revokes a prior (unwithdrawn) approval.
+     * @param weekKey Canonical week identifier (e.g. "2026-W29")
+     * @param player  Reward recipient
+     * @param token   Reward token address, or address(0) for native CELO
+     * @param amount  Amount the player becomes eligible to withdraw
+     */
+    function approveReward(
+        string calldata weekKey,
+        address player,
+        address token,
+        uint256 amount
+    )
+        external
+        onlyOwner
+    {
+        require(player != address(0), "Invalid player");
+
+        bytes32 key = _weeklyRewardKey(weekKey, player, token);
+        require(!rewardWithdrawn[key], "Reward already withdrawn");
+
+        approvedReward[key] = amount;
+
+        emit WeeklyRewardApproved(weekKey, player, token, amount, block.timestamp);
+    }
+
+    /**
+     * @notice Player withdraws their admin-approved weekly reward
+     * @param weekKey Canonical week identifier (e.g. "2026-W29")
+     * @param token   Reward token address, or address(0) for native CELO
+     */
+    function withdrawReward(string calldata weekKey, address token)
+        external
+        whenNotPaused
+        nonReentrant
+    {
+        bytes32 key = _weeklyRewardKey(weekKey, msg.sender, token);
+        require(!rewardWithdrawn[key], "Reward already withdrawn");
+
+        uint256 amount = approvedReward[key];
+        require(amount > 0, "No approved reward");
+        require(rewardPool[token] >= amount, "Insufficient pool balance");
+
+        rewardWithdrawn[key] = true;
+        rewardPool[token] -= amount;
+        _transferTo(msg.sender, token, amount);
+
+        emit WeeklyRewardWithdrawn(weekKey, msg.sender, token, amount, block.timestamp);
+    }
+
+    /**
+     * @notice View the approved (not-yet-withdrawn) reward for a player/week/token
+     */
+    function getApprovedReward(
+        string calldata weekKey,
+        address player,
+        address token
+    ) external view returns (uint256 amount, bool withdrawn) {
+        bytes32 key = _weeklyRewardKey(weekKey, player, token);
+        return (approvedReward[key], rewardWithdrawn[key]);
+    }
+
     // ============ Engagement Functions ============
 
     /**
@@ -756,6 +913,17 @@ contract PongEscrow is ReentrancyGuard, Pausable, Ownable {
             signature
         );
         require(signer == backendOracle, "Invalid result signature");
+    }
+
+    /**
+     * @dev Derive the double-claim guard key for a weekly reward
+     */
+    function _weeklyRewardKey(
+        string calldata weekKey,
+        address winner,
+        address token
+    ) internal pure returns (bytes32) {
+        return keccak256(abi.encode(weekKey, winner, token));
     }
 
     /**
