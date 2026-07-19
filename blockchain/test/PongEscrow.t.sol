@@ -1304,4 +1304,236 @@ contract PongEscrowTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(backendPrivateKey, ethSignedHash);
         return abi.encodePacked(r, s, v);
     }
+
+    // ============ Weekly Reward Tests ============
+
+    string internal constant WEEK_KEY = "2026-W29";
+
+    event RewardPoolFunded(address indexed token, address indexed funder, uint256 amount, uint256 newBalance, uint256 timestamp);
+    event RewardPoolWithdrawn(address indexed token, address indexed to, uint256 amount, uint256 newBalance, uint256 timestamp);
+    event WeeklyRewardApproved(string indexed weekKey, address indexed player, address indexed token, uint256 amount, uint256 timestamp);
+    event WeeklyRewardWithdrawn(string indexed weekKey, address indexed player, address indexed token, uint256 amount, uint256 timestamp);
+
+    // ---- Funding ----
+
+    function test_FundRewardPool_Native() public {
+        vm.expectEmit(true, true, false, true);
+        emit RewardPoolFunded(NATIVE_TOKEN, owner, 5 ether, 5 ether, block.timestamp);
+        escrow.fundRewardPool{value: 5 ether}(NATIVE_TOKEN, 5 ether);
+
+        assertEq(escrow.rewardPool(NATIVE_TOKEN), 5 ether);
+        assertEq(address(escrow).balance, 5 ether);
+    }
+
+    function test_FundRewardPool_ERC20() public {
+        cUSD.mint(owner, 100 ether);
+        cUSD.approve(address(escrow), type(uint256).max);
+
+        escrow.fundRewardPool(address(cUSD), 40 ether);
+
+        assertEq(escrow.rewardPool(address(cUSD)), 40 ether);
+        assertEq(cUSD.balanceOf(address(escrow)), 40 ether);
+    }
+
+    function test_FundRewardPool_AccumulatesAcrossCalls() public {
+        escrow.fundRewardPool{value: 2 ether}(NATIVE_TOKEN, 2 ether);
+        escrow.fundRewardPool{value: 3 ether}(NATIVE_TOKEN, 3 ether);
+        assertEq(escrow.rewardPool(NATIVE_TOKEN), 5 ether);
+    }
+
+    function test_FundRewardPool_RevertsIfNotOwner() public {
+        vm.deal(player1, 10 ether);
+        vm.prank(player1);
+        vm.expectRevert();
+        escrow.fundRewardPool{value: 1 ether}(NATIVE_TOKEN, 1 ether);
+    }
+
+    function test_FundRewardPool_RevertsOnNativeValueMismatch() public {
+        vm.expectRevert("Value must match amount");
+        escrow.fundRewardPool{value: 1 ether}(NATIVE_TOKEN, 2 ether);
+    }
+
+    function test_FundRewardPool_RevertsOnNativeValueForToken() public {
+        cUSD.mint(owner, 100 ether);
+        cUSD.approve(address(escrow), type(uint256).max);
+        vm.expectRevert("Native value not accepted for token");
+        escrow.fundRewardPool{value: 1 ether}(address(cUSD), 40 ether);
+    }
+
+    function test_FundRewardPool_RevertsOnZeroAmount() public {
+        vm.expectRevert("Amount must be positive");
+        escrow.fundRewardPool{value: 0}(NATIVE_TOKEN, 0);
+    }
+
+    // ---- Pool drain (admin) ----
+
+    function test_WithdrawRewardPool_ToOtherWallet() public {
+        cUSD.mint(owner, 100 ether);
+        cUSD.approve(address(escrow), type(uint256).max);
+        escrow.fundRewardPool(address(cUSD), 50 ether);
+
+        uint256 balBefore = cUSD.balanceOf(player3);
+        escrow.withdrawRewardPool(address(cUSD), 20 ether, player3);
+
+        assertEq(escrow.rewardPool(address(cUSD)), 30 ether);
+        assertEq(cUSD.balanceOf(player3), balBefore + 20 ether);
+    }
+
+    function test_WithdrawRewardPool_NativeToWallet() public {
+        escrow.fundRewardPool{value: 5 ether}(NATIVE_TOKEN, 5 ether);
+
+        uint256 balBefore = player3.balance;
+        escrow.withdrawRewardPool(NATIVE_TOKEN, 2 ether, player3);
+
+        assertEq(escrow.rewardPool(NATIVE_TOKEN), 3 ether);
+        assertEq(player3.balance, balBefore + 2 ether);
+    }
+
+    function test_WithdrawRewardPool_RevertsIfNotOwner() public {
+        escrow.fundRewardPool{value: 5 ether}(NATIVE_TOKEN, 5 ether);
+        // Attacker (non-owner) must be rejected by the ownership guard,
+        // not merely revert for some incidental reason.
+        vm.prank(player1);
+        vm.expectRevert("Ownable: caller is not the owner");
+        escrow.withdrawRewardPool(NATIVE_TOKEN, 1 ether, player1);
+    }
+
+    function test_WithdrawRewardPool_RevertsIfInsufficient() public {
+        escrow.fundRewardPool{value: 1 ether}(NATIVE_TOKEN, 1 ether);
+        vm.expectRevert("Insufficient pool balance");
+        escrow.withdrawRewardPool(NATIVE_TOKEN, 2 ether, player3);
+    }
+
+    function test_WithdrawRewardPool_RevertsOnZeroRecipient() public {
+        escrow.fundRewardPool{value: 5 ether}(NATIVE_TOKEN, 5 ether);
+        vm.expectRevert("Invalid recipient");
+        escrow.withdrawRewardPool(NATIVE_TOKEN, 1 ether, address(0));
+    }
+
+    // ---- Approve (admin) ----
+
+    function test_ApproveReward_SetsAmount() public {
+        vm.expectEmit(true, true, true, true);
+        emit WeeklyRewardApproved(WEEK_KEY, player1, address(cUSD), 10 ether, block.timestamp);
+        escrow.approveReward(WEEK_KEY, player1, address(cUSD), 10 ether);
+
+        (uint256 amount, bool withdrawn) = escrow.getApprovedReward(WEEK_KEY, player1, address(cUSD));
+        assertEq(amount, 10 ether);
+        assertFalse(withdrawn);
+    }
+
+    function test_ApproveReward_RevertsIfNotOwner() public {
+        vm.prank(player1);
+        vm.expectRevert();
+        escrow.approveReward(WEEK_KEY, player1, address(cUSD), 10 ether);
+    }
+
+    function test_ApproveReward_RevertsOnZeroPlayer() public {
+        vm.expectRevert("Invalid player");
+        escrow.approveReward(WEEK_KEY, address(0), address(cUSD), 10 ether);
+    }
+
+    function test_ApproveReward_CanBeRevisedBeforeWithdraw() public {
+        escrow.approveReward(WEEK_KEY, player1, address(cUSD), 10 ether);
+        escrow.approveReward(WEEK_KEY, player1, address(cUSD), 4 ether);
+        (uint256 amount, ) = escrow.getApprovedReward(WEEK_KEY, player1, address(cUSD));
+        assertEq(amount, 4 ether);
+    }
+
+    // ---- Withdraw (player) ----
+
+    function test_WithdrawReward_ERC20() public {
+        cUSD.mint(owner, 100 ether);
+        cUSD.approve(address(escrow), type(uint256).max);
+        escrow.fundRewardPool(address(cUSD), 50 ether);
+        escrow.approveReward(WEEK_KEY, player1, address(cUSD), 10 ether);
+
+        uint256 balBefore = cUSD.balanceOf(player1);
+        vm.expectEmit(true, true, true, true);
+        emit WeeklyRewardWithdrawn(WEEK_KEY, player1, address(cUSD), 10 ether, block.timestamp);
+        vm.prank(player1);
+        escrow.withdrawReward(WEEK_KEY, address(cUSD));
+
+        assertEq(cUSD.balanceOf(player1), balBefore + 10 ether);
+        assertEq(escrow.rewardPool(address(cUSD)), 40 ether);
+        (, bool withdrawn) = escrow.getApprovedReward(WEEK_KEY, player1, address(cUSD));
+        assertTrue(withdrawn);
+    }
+
+    function test_WithdrawReward_Native() public {
+        escrow.fundRewardPool{value: 20 ether}(NATIVE_TOKEN, 20 ether);
+        escrow.approveReward(WEEK_KEY, player1, NATIVE_TOKEN, 5 ether);
+
+        uint256 balBefore = player1.balance;
+        vm.prank(player1);
+        escrow.withdrawReward(WEEK_KEY, NATIVE_TOKEN);
+
+        assertEq(player1.balance, balBefore + 5 ether);
+        assertEq(escrow.rewardPool(NATIVE_TOKEN), 15 ether);
+    }
+
+    function test_WithdrawReward_RevertsIfNotApproved() public {
+        escrow.fundRewardPool{value: 20 ether}(NATIVE_TOKEN, 20 ether);
+        vm.prank(player1);
+        vm.expectRevert("No approved reward");
+        escrow.withdrawReward(WEEK_KEY, NATIVE_TOKEN);
+    }
+
+    function test_WithdrawReward_RevertsOnDoubleWithdraw() public {
+        escrow.fundRewardPool{value: 20 ether}(NATIVE_TOKEN, 20 ether);
+        escrow.approveReward(WEEK_KEY, player1, NATIVE_TOKEN, 5 ether);
+
+        vm.prank(player1);
+        escrow.withdrawReward(WEEK_KEY, NATIVE_TOKEN);
+
+        vm.prank(player1);
+        vm.expectRevert("Reward already withdrawn");
+        escrow.withdrawReward(WEEK_KEY, NATIVE_TOKEN);
+    }
+
+    function test_WithdrawReward_RevertsIfPoolDrainedBelowApproval() public {
+        escrow.fundRewardPool{value: 20 ether}(NATIVE_TOKEN, 20 ether);
+        escrow.approveReward(WEEK_KEY, player1, NATIVE_TOKEN, 5 ether);
+        // Admin drains the pool after approving
+        escrow.withdrawRewardPool(NATIVE_TOKEN, 18 ether, player3);
+
+        vm.prank(player1);
+        vm.expectRevert("Insufficient pool balance");
+        escrow.withdrawReward(WEEK_KEY, NATIVE_TOKEN);
+    }
+
+    function test_WithdrawReward_RevertsWhenPaused() public {
+        escrow.fundRewardPool{value: 20 ether}(NATIVE_TOKEN, 20 ether);
+        escrow.approveReward(WEEK_KEY, player1, NATIVE_TOKEN, 5 ether);
+        escrow.pause();
+
+        vm.prank(player1);
+        vm.expectRevert();
+        escrow.withdrawReward(WEEK_KEY, NATIVE_TOKEN);
+    }
+
+    function test_ApproveReward_RevertsAfterWithdraw() public {
+        escrow.fundRewardPool{value: 20 ether}(NATIVE_TOKEN, 20 ether);
+        escrow.approveReward(WEEK_KEY, player1, NATIVE_TOKEN, 5 ether);
+        vm.prank(player1);
+        escrow.withdrawReward(WEEK_KEY, NATIVE_TOKEN);
+
+        vm.expectRevert("Reward already withdrawn");
+        escrow.approveReward(WEEK_KEY, player1, NATIVE_TOKEN, 3 ether);
+    }
+
+    function test_WithdrawReward_DifferentWeeksIndependent() public {
+        escrow.fundRewardPool{value: 20 ether}(NATIVE_TOKEN, 20 ether);
+        escrow.approveReward("2026-W29", player1, NATIVE_TOKEN, 5 ether);
+        escrow.approveReward("2026-W30", player1, NATIVE_TOKEN, 5 ether);
+
+        vm.prank(player1);
+        escrow.withdrawReward("2026-W29", NATIVE_TOKEN);
+        vm.prank(player1);
+        escrow.withdrawReward("2026-W30", NATIVE_TOKEN);
+
+        assertEq(escrow.rewardPool(NATIVE_TOKEN), 10 ether);
+    }
+
+    receive() external payable {}
 }
