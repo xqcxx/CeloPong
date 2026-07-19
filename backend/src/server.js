@@ -26,6 +26,18 @@ const Game = require('./models/Game');
 const signatureService = require('./services/signatureService');
 const escrowVerificationService = require('./services/escrowVerificationService');
 const walletSessionService = require('./services/walletSessionService');
+const weeklyRewardService = require('./services/weeklyRewardService');
+const { isContractOwner } = require('./services/contractOwnerService');
+const {
+  REWARD_TOKEN_SYMBOL,
+  REWARD_AMOUNT_DISPLAY,
+  MIN_GAMES_FOR_ELIGIBILITY,
+  getRewardTokenAddress
+} = require('./config/weeklyRewards');
+const {
+  getCurrentWeekKey,
+  getRecentCompletedWeekKeys
+} = require('./utils/weekUtils');
 const { getCorsOrigins } = require('./utils/corsOrigins');
 const {
   buildClaimSummary,
@@ -936,6 +948,146 @@ app.get('/games/:roomCode', async (req, res) => {
   } catch (error) {
     console.error('Error fetching game:', error);
     res.status(500).json({ error: 'Failed to fetch game' });
+  }
+});
+
+// ============ Weekly Reward Routes ============
+
+// Extract the authenticated wallet from an Authorization: Bearer <token> header.
+async function getAuthenticatedWallet(req) {
+  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
+  return walletSessionService.authenticateToken(token);
+}
+
+// Public reward configuration (token, amount, eligibility threshold).
+app.get('/rewards/config', (req, res) => {
+  try {
+    res.status(200).json({
+      tokenSymbol: REWARD_TOKEN_SYMBOL,
+      amount: REWARD_AMOUNT_DISPLAY,
+      tokenAddress: getRewardTokenAddress(),
+      minGames: MIN_GAMES_FOR_ELIGIBILITY,
+      currentWeekKey: getCurrentWeekKey()
+    });
+  } catch (error) {
+    console.error('Error fetching reward config:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch reward config' });
+  }
+});
+
+// Current in-progress weekly leaderboard (live standings, not yet claimable).
+app.get('/rewards/leaderboard', async (req, res) => {
+  try {
+    const weekKey = req.query.weekKey || getCurrentWeekKey();
+    const limit = Math.min(parseInt(req.query.limit || '10', 10), 50);
+    const leaderboard = await weeklyRewardService.computeWeekLeaderboard(weekKey, limit);
+    res.status(200).json({ weekKey, leaderboard });
+  } catch (error) {
+    console.error('Error fetching weekly leaderboard:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch weekly leaderboard' });
+  }
+});
+
+// A wallet's rewards across recent completed weeks (requires wallet session).
+app.get('/rewards/mine', async (req, res) => {
+  try {
+    const walletAddress = await getAuthenticatedWallet(req);
+    if (!walletAddress) {
+      return res.status(401).json({ error: 'Valid wallet session required' });
+    }
+
+    const weeksBack = Math.min(parseInt(req.query.weeks || '8', 10), 26);
+    const weekKeys = getRecentCompletedWeekKeys(weeksBack);
+    const rewards = await weeklyRewardService.getRewardsForWallet(walletAddress, weekKeys);
+
+    res.status(200).json({ walletAddress, rewards });
+  } catch (error) {
+    console.error('Error fetching wallet rewards:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch rewards' });
+  }
+});
+
+// Player requests payout for a week they topped.
+app.post('/rewards/:weekKey/request', async (req, res) => {
+  try {
+    const walletAddress = await getAuthenticatedWallet(req);
+    if (!walletAddress) {
+      return res.status(401).json({ error: 'Valid wallet session required' });
+    }
+
+    const reward = await weeklyRewardService.requestPayout(req.params.weekKey, walletAddress);
+    res.status(200).json({ success: true, reward });
+  } catch (error) {
+    console.error('Error requesting payout:', error);
+    res.status(400).json({ error: error.message || 'Failed to request payout' });
+  }
+});
+
+// Player records an on-chain withdrawal of an approved reward.
+app.post('/rewards/:weekKey/claimed', async (req, res) => {
+  try {
+    const walletAddress = await getAuthenticatedWallet(req);
+    if (!walletAddress) {
+      return res.status(401).json({ error: 'Valid wallet session required' });
+    }
+
+    const { txHash } = req.body;
+    const reward = await weeklyRewardService.markClaimed(req.params.weekKey, walletAddress, txHash);
+    res.status(200).json({ success: true, reward });
+  } catch (error) {
+    console.error('Error recording reward claim:', error);
+    res.status(400).json({ error: error.message || 'Failed to record claim' });
+  }
+});
+
+// Admin: list rewards needing funding/approval (owner-gated).
+app.get('/rewards/admin/pending', async (req, res) => {
+  try {
+    const walletAddress = await getAuthenticatedWallet(req);
+    if (!walletAddress || !(await isContractOwner(walletAddress))) {
+      return res.status(403).json({ error: 'Contract owner session required' });
+    }
+
+    const pending = await weeklyRewardService.getPendingRewards();
+    res.status(200).json({ pending });
+  } catch (error) {
+    console.error('Error fetching pending rewards:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch pending rewards' });
+  }
+});
+
+// Admin: re-sync pending reward statuses from on-chain state (owner-gated).
+// Read-only against the chain; corrects rows left stale by a failed follow-up
+// write after an approve/withdraw tx succeeded.
+app.post('/rewards/admin/reconcile', async (req, res) => {
+  try {
+    const walletAddress = await getAuthenticatedWallet(req);
+    if (!walletAddress || !(await isContractOwner(walletAddress))) {
+      return res.status(403).json({ error: 'Contract owner session required' });
+    }
+
+    const result = await weeklyRewardService.reconcilePendingRewards();
+    res.status(200).json({ success: true, ...result });
+  } catch (error) {
+    console.error('Error reconciling rewards:', error);
+    res.status(500).json({ error: error.message || 'Failed to reconcile rewards' });
+  }
+});
+
+// Admin: record that a reward was approved on-chain (owner-gated).
+app.post('/rewards/admin/:rewardId/approved', async (req, res) => {
+  try {
+    const walletAddress = await getAuthenticatedWallet(req);
+    if (!walletAddress || !(await isContractOwner(walletAddress))) {
+      return res.status(403).json({ error: 'Contract owner session required' });
+    }
+
+    const { txHash } = req.body;
+    const reward = await weeklyRewardService.markApproved(req.params.rewardId, txHash);
+    res.status(200).json({ success: true, reward });
+  } catch (error) {
+    console.error('Error recording reward approval:', error);
+    res.status(400).json({ error: error.message || 'Failed to record approval' });
   }
 });
 
