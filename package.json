@@ -7,6 +7,26 @@
   },
   "dependencies": {
     "@reown/appkit": "^1.8.10",
-    "@reown/appkit-adapter-wagmi": "^1.8.10"
-  }
+    "@reown/appkit-adapter-wagmi": "^1.8.10",
+    "commander": "^15.0.0",
+    "dotenv": "^17.4.2",
+    "viem": "^2.52.2"
+  },
+  "description": "A modern multiplayer Pong game with real-time gameplay, room-based matchmaking, ELO ranking system, and retro vibes!",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BaseBootX/CeloPong.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/BaseBootX/CeloPong/issues"
+  },
+  "homepage": "https://github.com/BaseBootX/CeloPong#readme"
 }
