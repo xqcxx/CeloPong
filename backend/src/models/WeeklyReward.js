@@ -73,8 +73,8 @@ const weeklyRewardSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// One reward record per wallet per week.
-weeklyRewardSchema.index({ weekKey: 1, walletAddress: 1 }, { unique: true });
+// One top-player reward record per completed week.
+weeklyRewardSchema.index({ weekKey: 1 }, { unique: true });
 
 const WeeklyReward = mongoose.model('WeeklyReward', weeklyRewardSchema);
 

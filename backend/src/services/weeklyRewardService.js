@@ -11,9 +11,9 @@ const {
 const { getApprovedReward } = require('./weeklyRewardChainService');
 
 /**
- * Tally per-player wins and games-played for finished games within a week.
- * Only players with a resolvable wallet address are counted (rewards are paid
- * on-chain).
+ * Tally per-wallet wins and games-played for finished games within a week.
+ * Game wallet fields are authoritative; Player records are used to enrich
+ * names/ratings and as a fallback for older game rows.
  * @param {string} weekKey
  * @returns {Promise<Map<string, { walletAddress, playerName, wins, gamesPlayed, rating }>>}
  */
@@ -25,7 +25,7 @@ async function tallyWeek(weekKey) {
     winner: { $in: ['player1', 'player2'] },
     endedAt: { $gte: start, $lt: end }
   })
-    .select('player1 player2 winner endedAt')
+    .select('player1 player2 player1Address player2Address winner endedAt')
     .lean();
 
   // Collect all player names appearing this week, resolve to wallets once.
@@ -46,30 +46,50 @@ async function tallyWeek(weekKey) {
   // stats keyed by lowercased wallet address
   const stats = new Map();
 
-  const bump = (name, isWinner) => {
+  const bump = (participant, isWinner, endedAt) => {
+    const name = participant?.name;
+    if (!name && !participant?.walletAddress) return;
     const player = nameToPlayer.get(name);
-    if (!player?.walletAddress) return; // no payable wallet, skip
-    const key = player.walletAddress.toLowerCase();
+    const walletAddress = participant?.walletAddress || player?.walletAddress;
+    if (!walletAddress) return; // no payable wallet, skip
+
+    const key = walletAddress.toLowerCase();
     let entry = stats.get(key);
     if (!entry) {
       entry = {
         walletAddress: key,
-        playerName: player.name,
+        playerName: player?.name || name || key,
         wins: 0,
         gamesPlayed: 0,
-        rating: player.rating || 0
+        rating: player?.rating || participant?.rating || 0,
+        winTimes: []
       };
       stats.set(key, entry);
     }
+    if (!entry.playerName && (player?.name || name)) {
+      entry.playerName = player?.name || name;
+    }
+    entry.rating = Math.max(entry.rating || 0, player?.rating || participant?.rating || 0);
     entry.gamesPlayed += 1;
-    if (isWinner) entry.wins += 1;
+    if (isWinner) {
+      entry.wins += 1;
+      entry.winTimes.push(new Date(endedAt).getTime());
+    }
   };
 
   for (const game of games) {
-    const winnerName = game.winner === 'player1' ? game.player1?.name : game.player2?.name;
-    const loserName = game.winner === 'player1' ? game.player2?.name : game.player1?.name;
-    if (winnerName) bump(winnerName, true);
-    if (loserName) bump(loserName, false);
+    const player1 = {
+      ...game.player1,
+      walletAddress: game.player1Address
+    };
+    const player2 = {
+      ...game.player2,
+      walletAddress: game.player2Address
+    };
+    const winner = game.winner === 'player1' ? player1 : player2;
+    const loser = game.winner === 'player1' ? player2 : player1;
+    bump(winner, true, game.endedAt);
+    bump(loser, false, game.endedAt);
   }
 
   return stats;
@@ -79,7 +99,7 @@ async function tallyWeek(weekKey) {
  * Compute the top eligible player for a completed week.
  * Eligibility: at least MIN_GAMES_FOR_ELIGIBILITY games played in the week.
  * Ranking: most wins, tie-break by higher rating, then earliest to reach the
- * win count is approximated by higher rating only (deterministic).
+ * final win count, then wallet address.
  * @param {string} weekKey
  * @returns {Promise<null | { walletAddress, playerName, wins, gamesPlayed, rank }>}
  */
@@ -94,6 +114,9 @@ async function computeWeekWinner(weekKey) {
   eligible.sort((a, b) => {
     if (b.wins !== a.wins) return b.wins - a.wins;
     if (b.rating !== a.rating) return b.rating - a.rating;
+    const aReachedAt = a.winTimes[a.wins - 1] ?? Number.MAX_SAFE_INTEGER;
+    const bReachedAt = b.winTimes[b.wins - 1] ?? Number.MAX_SAFE_INTEGER;
+    if (aReachedAt !== bReachedAt) return aReachedAt - bReachedAt;
     return a.walletAddress.localeCompare(b.walletAddress);
   });
 
@@ -118,6 +141,9 @@ async function computeWeekLeaderboard(weekKey, limit = 10) {
     .sort((a, b) => {
       if (b.wins !== a.wins) return b.wins - a.wins;
       if (b.rating !== a.rating) return b.rating - a.rating;
+      const aReachedAt = a.winTimes[a.wins - 1] ?? Number.MAX_SAFE_INTEGER;
+      const bReachedAt = b.winTimes[b.wins - 1] ?? Number.MAX_SAFE_INTEGER;
+      if (aReachedAt !== bReachedAt) return aReachedAt - bReachedAt;
       return a.walletAddress.localeCompare(b.walletAddress);
     })
     .slice(0, limit)
@@ -236,6 +262,17 @@ async function requestPayout(weekKey, walletAddress) {
 async function markApproved(rewardId, approveTxHash) {
   const reward = await WeeklyReward.findById(rewardId);
   if (!reward) throw new Error('Reward not found');
+  const chain = await getApprovedReward(reward.weekKey, reward.walletAddress, reward.tokenAddress);
+  if (chain.withdrawn) {
+    reward.status = 'claimed';
+    if (!reward.claimedAt) reward.claimedAt = new Date();
+    if (approveTxHash && !reward.approveTxHash) reward.approveTxHash = approveTxHash;
+    await reward.save();
+    return reward;
+  }
+  if (chain.amount < BigInt(reward.amount)) {
+    throw new Error('On-chain reward approval is missing or below the expected amount');
+  }
   reward.status = 'approved';
   reward.approvedAt = new Date();
   if (approveTxHash) reward.approveTxHash = approveTxHash;
@@ -253,6 +290,10 @@ async function markClaimed(weekKey, walletAddress, claimTxHash) {
   const normalized = walletAddress.toLowerCase();
   const reward = await WeeklyReward.findOne({ weekKey, walletAddress: normalized });
   if (!reward) throw new Error('Reward not found');
+  const chain = await getApprovedReward(reward.weekKey, reward.walletAddress, reward.tokenAddress);
+  if (!chain.withdrawn) {
+    throw new Error('On-chain reward withdrawal has not been confirmed');
+  }
   reward.status = 'claimed';
   reward.claimedAt = new Date();
   if (claimTxHash) reward.claimTxHash = claimTxHash;
