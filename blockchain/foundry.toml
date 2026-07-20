@@ -1,5 +1,5 @@
 [profile.default]
-solc = "0.8.13"
+solc = "0.8.20"
 auto_detect_solc = false
 evm_version = "paris"
 
@@ -14,7 +14,7 @@ celo_sepolia_alchemy = "https://celo-sepolia.g.alchemy.com/v2/oA3aWf4dW3KozyXiBJ
 celo = "${CELO_MAINNET}"
 celo_forno = "https://forno.celo.org"
 
-# Celoscan verification (etherscan-compatible API)
+# Etherscan V2 verification for Celo-compatible explorers.
 [etherscan]
-celo = { key = "${CELOSCAN_API_KEY}", url = "https://api.celoscan.io/api" }
-celo_sepolia = { key = "${CELOSCAN_API_KEY}", url = "https://api-sepolia.celoscan.io/api" }
+celo = { key = "${ETHERSCAN_API_KEY}", url = "https://api.etherscan.io/v2/api?chainid=42220" }
+celo_sepolia = { key = "${ETHERSCAN_API_KEY}", url = "https://api.etherscan.io/v2/api?chainid=11142220" }

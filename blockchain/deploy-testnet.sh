@@ -4,7 +4,7 @@
 # ==========================================
 # Prerequisites:
 #   - Foundry installed (forge, cast)
-#   - .env file with BACKEND_ORACLE_ADDRESS, CELO_SEPOLIA, CELOSCAN_API_KEY
+#   - .env file with BACKEND_ORACLE_ADDRESS, CELO_SEPOLIA, ETHERSCAN_API_KEY
 #   - .env.enc with encrypted PRIVATE_KEY (use encrypt-env.js to create)
 #   - Test CELO in your wallet
 
@@ -25,7 +25,7 @@ else
     echo "Create a .env file with:"
     echo "  BACKEND_ORACLE_ADDRESS=0x..."
     echo "  CELO_SEPOLIA=https://..."
-    echo "  CELOSCAN_API_KEY=your_key"
+    echo "  ETHERSCAN_API_KEY=your_key"
     exit 1
 fi
 
@@ -81,5 +81,6 @@ echo ""
 echo "Verify manually:"
 echo "forge verify-contract <ADDRESS> src/PongEscrow.sol:PongEscrow \\"
 echo "  --verifier etherscan \\"
-echo "  --verifier-url https://api-sepolia.celoscan.io/api \\"
+echo "  --verifier-url \"https://api.etherscan.io/v2/api?chainid=11142220\" \\"
+echo "  --etherscan-api-key \$ETHERSCAN_API_KEY \\"
 echo "  --constructor-args \$(cast abi-encode \"constructor(address)\" $BACKEND_ORACLE_ADDRESS)"

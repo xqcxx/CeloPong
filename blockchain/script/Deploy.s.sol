@@ -24,7 +24,8 @@ contract DeployScript is Script {
         console.log("To verify on Celoscan:");
         console.log("forge verify-contract", address(escrow), "src/PongEscrow.sol:PongEscrow \\");
         console.log("  --verifier etherscan \\");
-        console.log("  --verifier-url https://api-sepolia.celoscan.io/api \\");
+        console.log("  --verifier-url https://api.etherscan.io/v2/api?chainid=<CHAIN_ID> \\");
+        console.log("  --etherscan-api-key $ETHERSCAN_API_KEY \\");
         console.log("  --constructor-args $(cast abi-encode \"constructor(address)\"", backendOracle, ")");
     }
 }
