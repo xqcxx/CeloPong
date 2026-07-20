@@ -15,6 +15,15 @@ function getRpcUrls(chain) {
   return chain?.rpcUrls?.default?.http || chain?.rpcUrls?.public?.http || [];
 }
 
+async function waitForSuccessfulReceipt(publicClient, hash) {
+  if (!publicClient || !hash) return null;
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt?.status !== 'success') {
+    throw new Error('Transaction was reverted.');
+  }
+  return receipt;
+}
+
 async function logStakeTransaction(label, phase, details) {
   let providerChainId = null;
 
@@ -118,19 +127,22 @@ export function useTokenAllowance(owner, spender, tokenAddress) {
 // ============ ERC-20 Approve Hook ============
 
 export function useApproveToken() {
-  const { data: hash, writeContract, isPending, error } = useWriteContract();
+  const publicClient = usePublicClient();
+  const { data: hash, writeContractAsync, isPending, error } = useWriteContract();
 
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
   const approve = async (tokenAddress, spender, amountWei) => {
     try {
-      await writeContract({
+      const submittedHash = await writeContractAsync({
         address: tokenAddress,
         abi: erc20Abi,
         functionName: 'approve',
         args: [spender, amountWei],
         ...minipayLegacyType(),
       });
+      await waitForSuccessfulReceipt(publicClient, submittedHash);
+      return submittedHash;
     } catch (err) {
       console.error('Error approving token:', err);
       throw err;
@@ -557,16 +569,19 @@ export function useReportMatch() {
 
 // Player withdraws an admin-approved weekly reward.
 export function useWithdrawWeeklyReward() {
+  const publicClient = usePublicClient();
   const { data: hash, writeContractAsync, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
   const withdrawReward = async (weekKey, tokenAddress) => {
-    return writeContractAsync({
+    const submittedHash = await writeContractAsync({
       address: PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
       functionName: 'withdrawReward',
       args: [weekKey, tokenAddress || '0x0000000000000000000000000000000000000000'],
       ...minipayLegacyType(),
     });
+    await waitForSuccessfulReceipt(publicClient, submittedHash);
+    return submittedHash;
   };
 
   return { withdrawReward, hash, isPending, isConfirming, isSuccess, error };
@@ -574,6 +589,7 @@ export function useWithdrawWeeklyReward() {
 
 // Admin funds the reward pool for a token (native or ERC-20).
 export function useFundRewardPool() {
+  const publicClient = usePublicClient();
   const { data: hash, writeContractAsync, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
@@ -587,7 +603,9 @@ export function useFundRewardPool() {
     if (isNativeToken(tokenAddress)) {
       txOpts.value = amountWei;
     }
-    return writeContractAsync(txOpts);
+    const submittedHash = await writeContractAsync(txOpts);
+    await waitForSuccessfulReceipt(publicClient, submittedHash);
+    return submittedHash;
   };
 
   return { fundRewardPool, hash, isPending, isConfirming, isSuccess, error };
@@ -595,16 +613,19 @@ export function useFundRewardPool() {
 
 // Admin approves a player's weekly reward so they can withdraw it.
 export function useApproveReward() {
+  const publicClient = usePublicClient();
   const { data: hash, writeContractAsync, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
   const approveReward = async (weekKey, player, tokenAddress, amountWei) => {
-    return writeContractAsync({
+    const submittedHash = await writeContractAsync({
       address: PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
       functionName: 'approveReward',
       args: [weekKey, player, tokenAddress || '0x0000000000000000000000000000000000000000', amountWei],
       ...minipayLegacyType(),
     });
+    await waitForSuccessfulReceipt(publicClient, submittedHash);
+    return submittedHash;
   };
 
   return { approveReward, hash, isPending, isConfirming, isSuccess, error };
@@ -612,16 +633,19 @@ export function useApproveReward() {
 
 // Admin drains reward pool funds to a provided wallet.
 export function useWithdrawRewardPool() {
+  const publicClient = usePublicClient();
   const { data: hash, writeContractAsync, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
   const withdrawRewardPool = async (tokenAddress, amountWei, to) => {
-    return writeContractAsync({
+    const submittedHash = await writeContractAsync({
       address: PONG_ESCROW_ADDRESS, abi: PONG_ESCROW_ABI,
       functionName: 'withdrawRewardPool',
       args: [tokenAddress || '0x0000000000000000000000000000000000000000', amountWei, to],
       ...minipayLegacyType(),
     });
+    await waitForSuccessfulReceipt(publicClient, submittedHash);
+    return submittedHash;
   };
 
   return { withdrawRewardPool, hash, isPending, isConfirming, isSuccess, error };

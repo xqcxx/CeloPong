@@ -21,17 +21,23 @@ export function getStoredWalletSession(address) {
   }
 }
 
+export function clearStoredWalletSession(address) {
+  if (!address) return;
+  sessionStorage.removeItem(storageKey(address));
+}
+
 export function useWalletSession() {
   const { address } = useAccount();
   const { signMessageAsync } = useSignMessage();
 
-  const ensureWalletSession = useCallback(async () => {
+  const ensureWalletSession = useCallback(async ({ forceNew = false } = {}) => {
     if (!address) {
       throw new Error('Connect your wallet before entering a staked room.');
     }
 
     const stored = getStoredWalletSession(address);
-    if (stored) return stored.token;
+    if (stored && !forceNew) return stored.token;
+    if (forceNew) clearStoredWalletSession(address);
 
     if (isMiniPay()) {
       const sessionResponse = await fetch(BACKEND_URL + '/auth/wallet-session', {

@@ -28,7 +28,7 @@ function formatAmount(amountWei, decimals = 18) {
 }
 
 const WeeklyRewards = () => {
-  const { isConnected } = useAccount();
+  const { address, isConnected } = useAccount();
   const { ensureWalletSession } = useWalletSession();
   const { withdrawReward } = useWithdrawWeeklyReward();
 
@@ -65,11 +65,22 @@ const WeeklyRewards = () => {
       const data = await fetchMyRewards(token);
       setMyRewards(data.rewards || []);
     } catch (err) {
+      if (err.status === 401 && address) {
+        try {
+          const token = await ensureWalletSession({ forceNew: true });
+          const data = await fetchMyRewards(token);
+          setMyRewards(data.rewards || []);
+          return;
+        } catch (retryErr) {
+          setError(retryErr.message);
+          return;
+        }
+      }
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [isConnected, ensureWalletSession]);
+  }, [address, isConnected, ensureWalletSession]);
 
   useEffect(() => { loadPublic(); }, [loadPublic]);
   useEffect(() => { loadMine(); }, [loadMine]);

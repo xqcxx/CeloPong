@@ -7,7 +7,7 @@ import MultiplayerGame from './components/MultiplayerGame';
 import SpectatorView from './components/SpectatorView';
 import GameOver from './components/GameOver';
 import GameHistory from './components/GameHistory';
-import WeeklyRewards from './components/WeeklyRewards';
+import RewardsPage from './components/RewardsPage';
 import AdminRewards from './components/AdminRewards';
 import { Web3Provider } from './components/Web3Provider';
 import { NotificationProvider } from './components/notifications/NotificationProvider';
@@ -126,7 +126,7 @@ function AppContent() {
             />
             <Route
               path="/rewards"
-              element={<WeeklyRewards />}
+              element={<RewardsPage />}
             />
             <Route
               path="/admin/rewards"

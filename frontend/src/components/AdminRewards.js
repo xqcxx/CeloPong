@@ -8,8 +8,11 @@ import {
   useFundRewardPool,
   useApproveReward,
   useWithdrawRewardPool,
-  useRewardPoolBalance
+  useRewardPoolBalance,
+  useTokenAllowance,
+  useApproveToken
 } from '../hooks/useContract';
+import { isNativeToken } from '../config/currencies';
 import { fetchRewardConfig, fetchPendingRewards, recordRewardApproval, reconcileRewards } from '../api/rewards';
 
 const DECIMALS = 18;
@@ -28,6 +31,7 @@ const AdminRewards = () => {
   const { fundRewardPool } = useFundRewardPool();
   const { approveReward } = useApproveReward();
   const { withdrawRewardPool } = useWithdrawRewardPool();
+  const { approve: approveToken } = useApproveToken();
 
   const [config, setConfig] = useState(null);
   const [pending, setPending] = useState([]);
@@ -49,6 +53,11 @@ const AdminRewards = () => {
 
   const tokenAddress = config?.tokenAddress;
   const { data: poolBalance, refetch: refetchPool } = useRewardPoolBalance(tokenAddress);
+  const { data: rewardTokenAllowance, refetch: refetchAllowance } = useTokenAllowance(
+    address,
+    PONG_ESCROW_ADDRESS,
+    tokenAddress
+  );
 
   const loadPending = useCallback(async () => {
     if (!isOwner) return;
@@ -58,9 +67,20 @@ const AdminRewards = () => {
       const data = await fetchPendingRewards(token);
       setPending(data.pending || []);
     } catch (err) {
+      if (err.status === 401 && address) {
+        try {
+          const token = await ensureWalletSession({ forceNew: true });
+          const data = await fetchPendingRewards(token);
+          setPending(data.pending || []);
+          return;
+        } catch (retryErr) {
+          setError(retryErr.message);
+          return;
+        }
+      }
       setError(err.message);
     }
-  }, [isOwner, ensureWalletSession]);
+  }, [address, isOwner, ensureWalletSession]);
 
   useEffect(() => { fetchRewardConfig().then(setConfig).catch((e) => setError(e.message)); }, []);
   useEffect(() => { loadPending(); }, [loadPending]);
@@ -71,7 +91,13 @@ const AdminRewards = () => {
     setError(null);
     setNotice(null);
     try {
-      await fundRewardPool(tokenAddress, parseUnits(fundAmount, DECIMALS));
+      const amountWei = parseUnits(fundAmount, DECIMALS);
+      if (!isNativeToken(tokenAddress) && (rewardTokenAllowance ?? 0n) < amountWei) {
+        setNotice(`Approving ${fundAmount} ${config.tokenSymbol} for the reward pool...`);
+        await approveToken(tokenAddress, PONG_ESCROW_ADDRESS, amountWei);
+        await refetchAllowance();
+      }
+      await fundRewardPool(tokenAddress, amountWei);
       setNotice(`Funded pool with ${fundAmount} ${config.tokenSymbol}.`);
       setFundAmount('');
       await refetchPool();
