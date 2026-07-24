@@ -96,6 +96,21 @@
   padding-top: 22px;
 }
 
+.weekly-rewards__section-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.weekly-rewards__section-head button {
+  background: transparent;
+  border: 1px solid #5eead4;
+  color: #99f6e4;
+  font-size: 0.82rem;
+  padding: 8px 11px;
+}
+
 .weekly-rewards__leaderboard ol,
 .weekly-rewards__mine ul,
 .admin-rewards__pending ul {
@@ -284,7 +299,8 @@
   }
 
   .weekly-rewards__hero,
-  .admin-rewards__pending-head {
+  .admin-rewards__pending-head,
+  .weekly-rewards__section-head {
     display: block;
   }
 
@@ -310,6 +326,10 @@
   }
 
   .admin-rewards__reconcile {
+    margin-bottom: 12px;
+  }
+
+  .weekly-rewards__section-head button {
     margin-bottom: 12px;
   }
 }

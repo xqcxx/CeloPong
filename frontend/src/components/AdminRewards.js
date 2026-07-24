@@ -14,6 +14,7 @@ import {
 import { isNativeToken } from '../config/currencies';
 import { fetchRewardConfig, fetchPendingRewards, recordRewardApproval, reconcileRewards } from '../api/rewards';
 import { formatRewardAmount, formatWeekLabel, getRewardStatusLabel } from '../utils/rewards';
+import '../styles/Rewards.css';
 
 const AdminRewards = () => {
   const { address, isConnected } = useAccount();

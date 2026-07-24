@@ -25,11 +25,13 @@ const WeeklyRewards = () => {
   const [leaderboard, setLeaderboard] = useState([]);
   const [myRewards, setMyRewards] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [publicLoading, setPublicLoading] = useState(false);
   const [busyWeek, setBusyWeek] = useState(null);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
 
   const loadPublic = useCallback(async () => {
+    setPublicLoading(true);
     try {
       const [cfg, lb] = await Promise.all([
         fetchRewardConfig(),
@@ -39,6 +41,8 @@ const WeeklyRewards = () => {
       setLeaderboard(lb.leaderboard || []);
     } catch (err) {
       setError(err.message);
+    } finally {
+      setPublicLoading(false);
     }
   }, []);
 
@@ -148,7 +152,12 @@ const WeeklyRewards = () => {
       {notice && <div className="weekly-rewards__notice">{notice}</div>}
 
       <section className="weekly-rewards__leaderboard">
-        <h3>This week&apos;s standings</h3>
+        <div className="weekly-rewards__section-head">
+          <h3>This week&apos;s standings</h3>
+          <button disabled={publicLoading} onClick={loadPublic}>
+            {publicLoading ? 'Refreshing…' : 'Refresh standings'}
+          </button>
+        </div>
         <p className="weekly-rewards__hint">
           {topEligible
             ? `${topEligible.playerName || 'The current leader'} is currently eligible. The final winner is recorded after the week ends.`
