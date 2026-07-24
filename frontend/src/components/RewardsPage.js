@@ -3,6 +3,7 @@ import { useAccount, useReadContract } from 'wagmi';
 import WeeklyRewards from './WeeklyRewards';
 import AdminRewards from './AdminRewards';
 import { PONG_ESCROW_ADDRESS, PONG_ESCROW_ABI } from '../contracts/PongEscrow';
+import '../styles/Rewards.css';
 
 const RewardsPage = () => {
   const { address, isConnected } = useAccount();

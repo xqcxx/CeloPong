@@ -1,0 +1,310 @@
+.rewards-page {
+  width: min(1120px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 32px 0 64px;
+  text-align: left;
+}
+
+.rewards-page > * + * {
+  margin-top: 24px;
+}
+
+.weekly-rewards,
+.admin-rewards {
+  border: 1px solid #293241;
+  border-radius: 20px;
+  background: linear-gradient(145deg, #111827, #080b12);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.25);
+  padding: 28px;
+}
+
+.weekly-rewards__hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.weekly-rewards h2,
+.admin-rewards h2 {
+  color: #f8fafc;
+  font-size: clamp(1.5rem, 3vw, 2.1rem);
+  margin-bottom: 8px;
+}
+
+.weekly-rewards h3,
+.admin-rewards h3 {
+  color: #e2e8f0;
+  font-size: 1.05rem;
+  margin-bottom: 14px;
+}
+
+.weekly-rewards__summary,
+.weekly-rewards__rules,
+.weekly-rewards__hint,
+.admin-rewards__hint {
+  color: #aeb9c9;
+  line-height: 1.6;
+}
+
+.weekly-rewards__week-badge {
+  flex: 0 0 auto;
+  border: 1px solid #5eead4;
+  border-radius: 999px;
+  color: #99f6e4;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 8px 14px;
+  white-space: nowrap;
+}
+
+.weekly-rewards__rules {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 22px 0 28px;
+}
+
+.weekly-rewards__rule {
+  border: 1px solid #293241;
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.weekly-rewards__rule strong,
+.weekly-rewards__rule span {
+  display: block;
+}
+
+.weekly-rewards__rule strong {
+  color: #f8fafc;
+  font-size: 1.1rem;
+  margin-bottom: 4px;
+}
+
+.weekly-rewards__rule span {
+  color: #8f9bad;
+  font-size: 0.82rem;
+}
+
+.weekly-rewards__leaderboard,
+.weekly-rewards__mine,
+.admin-rewards__pool,
+.admin-rewards__pending {
+  border-top: 1px solid #293241;
+  padding-top: 22px;
+}
+
+.weekly-rewards__leaderboard ol,
+.weekly-rewards__mine ul,
+.admin-rewards__pending ul {
+  list-style: none;
+}
+
+.leaderboard-row,
+.reward-row,
+.pending-row {
+  align-items: center;
+  border: 1px solid #293241;
+  border-radius: 12px;
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 14px;
+}
+
+.leaderboard-row {
+  grid-template-columns: 44px minmax(120px, 1fr) 92px 105px 150px;
+}
+
+.leaderboard-row.is-current {
+  border-color: #5eead4;
+  background: rgba(45, 212, 191, 0.08);
+}
+
+.leaderboard-row.is-ineligible {
+  opacity: 0.72;
+}
+
+.rank {
+  color: #99f6e4;
+  font-weight: 800;
+}
+
+.name,
+.winner {
+  color: #f8fafc;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wins,
+.games,
+.amount,
+.status,
+.hint,
+.tag {
+  color: #b7c2d1;
+  font-size: 0.88rem;
+}
+
+.tag,
+.status {
+  border-radius: 999px;
+  display: inline-block;
+  padding: 5px 9px;
+  text-align: center;
+}
+
+.tag {
+  background: #332b13;
+  color: #fcd34d;
+}
+
+.status--available {
+  background: #172554;
+  color: #bfdbfe;
+}
+
+.status--requested {
+  background: #3b250e;
+  color: #fcd34d;
+}
+
+.status--approved {
+  background: #12372e;
+  color: #99f6e4;
+}
+
+.status--claimed {
+  background: #1f2937;
+  color: #cbd5e1;
+}
+
+.reward-row {
+  grid-template-columns: 120px minmax(110px, 1fr) 180px minmax(120px, auto);
+}
+
+.pending-row {
+  grid-template-columns: 110px minmax(120px, 1fr) 150px 120px auto;
+}
+
+.weekly-rewards button,
+.admin-rewards button {
+  border: 0;
+  border-radius: 9px;
+  background: #2dd4bf;
+  color: #06201d;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 10px 14px;
+}
+
+.weekly-rewards button:disabled,
+.admin-rewards button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.weekly-rewards__error,
+.admin-rewards__error,
+.weekly-rewards__notice,
+.admin-rewards__notice {
+  border-radius: 10px;
+  margin: 12px 0;
+  padding: 12px 14px;
+}
+
+.weekly-rewards__error,
+.admin-rewards__error {
+  background: #3b151d;
+  color: #fecdd3;
+}
+
+.weekly-rewards__notice,
+.admin-rewards__notice {
+  background: #12372e;
+  color: #99f6e4;
+}
+
+.admin-rewards__pool > p {
+  color: #99f6e4;
+  font-size: 1.8rem;
+  font-weight: 800;
+  margin-bottom: 18px;
+}
+
+.admin-rewards__fund,
+.admin-rewards__drain {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.admin-rewards input {
+  background: #0b1019;
+  border: 1px solid #394454;
+  border-radius: 9px;
+  color: #fff;
+  min-width: 160px;
+  padding: 10px 12px;
+}
+
+.admin-rewards__pending-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.admin-rewards__reconcile {
+  background: transparent !important;
+  border: 1px solid #5eead4 !important;
+  color: #99f6e4 !important;
+}
+
+@media (max-width: 760px) {
+  .rewards-page {
+    width: min(100% - 20px, 620px);
+    padding-top: 18px;
+  }
+
+  .weekly-rewards,
+  .admin-rewards {
+    padding: 20px 16px;
+  }
+
+  .weekly-rewards__hero,
+  .admin-rewards__pending-head {
+    display: block;
+  }
+
+  .weekly-rewards__week-badge {
+    display: inline-block;
+    margin-top: 14px;
+  }
+
+  .weekly-rewards__rules {
+    grid-template-columns: 1fr;
+  }
+
+  .leaderboard-row,
+  .reward-row,
+  .pending-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .leaderboard-row .name,
+  .reward-row .amount,
+  .pending-row .winner {
+    grid-column: span 2;
+  }
+
+  .admin-rewards__reconcile {
+    margin-bottom: 12px;
+  }
+}
