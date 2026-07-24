@@ -1,7 +1,5 @@
-/* global BigInt */
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAccount } from 'wagmi';
-import { formatUnits } from 'viem';
 import { useWalletSession } from '../hooks/useWalletSession';
 import { useWithdrawWeeklyReward } from '../hooks/useContract';
 import {
@@ -11,21 +9,12 @@ import {
   requestPayout,
   recordRewardClaim
 } from '../api/rewards';
-
-const STATUS_LABELS = {
-  available: 'Available',
-  requested: 'Payout requested',
-  approved: 'Ready to withdraw',
-  claimed: 'Claimed'
-};
-
-function formatAmount(amountWei, decimals = 18) {
-  try {
-    return formatUnits(BigInt(amountWei), decimals);
-  } catch {
-    return '0';
-  }
-}
+import {
+  formatRewardAmount,
+  formatWeekLabel,
+  getRewardStatusLabel,
+  isEligibleLeaderboardRow
+} from '../utils/rewards';
 
 const WeeklyRewards = () => {
   const { address, isConnected } = useAccount();
@@ -118,32 +107,73 @@ const WeeklyRewards = () => {
     }
   };
 
+  const minGames = config?.minGames || 0;
+  const topEligible = leaderboard.find((row) => isEligibleLeaderboardRow(row, minGames));
+
   return (
     <div className="weekly-rewards">
-      <h2>Weekly Rewards</h2>
+      <div className="weekly-rewards__hero">
+        <div>
+          <h2>Weekly Rewards</h2>
+          <p className="weekly-rewards__summary">
+            Finish the week as the eligible leaderboard winner to earn a reward.
+            Standings update as finished games are recorded.
+          </p>
+        </div>
+        {config && (
+          <span className="weekly-rewards__week-badge">
+            {formatWeekLabel(config.currentWeekKey)} · Live
+          </span>
+        )}
+      </div>
+
       {config && (
-        <p className="weekly-rewards__summary">
-          Top the leaderboard this week to win {config.amount} {config.tokenSymbol}.
-          Play at least {config.minGames} games to qualify. Current week: {config.currentWeekKey}.
-        </p>
+        <div className="weekly-rewards__rules" aria-label="Weekly reward rules">
+          <div className="weekly-rewards__rule">
+            <strong>{config.amount} {config.tokenSymbol}</strong>
+            <span>Reward for the weekly winner</span>
+          </div>
+          <div className="weekly-rewards__rule">
+            <strong>{config.minGames} games</strong>
+            <span>Minimum finished games to qualify</span>
+          </div>
+          <div className="weekly-rewards__rule">
+            <strong>Most wins</strong>
+            <span>Rating and tie-break rules decide ties</span>
+          </div>
+        </div>
       )}
 
       {error && <div className="weekly-rewards__error">{error}</div>}
       {notice && <div className="weekly-rewards__notice">{notice}</div>}
 
       <section className="weekly-rewards__leaderboard">
-        <h3>This week's standings</h3>
+        <h3>This week&apos;s standings</h3>
+        <p className="weekly-rewards__hint">
+          {topEligible
+            ? `${topEligible.playerName || 'The current leader'} is currently eligible. The final winner is recorded after the week ends.`
+            : `No player has met the ${minGames || 'configured'}-game requirement with a win yet.`}
+        </p>
         {leaderboard.length === 0 ? (
           <p>No games recorded yet this week.</p>
         ) : (
           <ol>
             {leaderboard.map((row) => (
-              <li key={row.walletAddress} className={row.eligible ? 'eligible' : 'ineligible'}>
+              <li
+                key={row.walletAddress}
+                className={`leaderboard-row ${isEligibleLeaderboardRow(row, minGames) ? 'is-eligible' : 'is-ineligible'} ${topEligible?.walletAddress === row.walletAddress ? 'is-current' : ''}`}
+              >
                 <span className="rank">#{row.rank}</span>
                 <span className="name">{row.playerName || row.walletAddress}</span>
                 <span className="wins">{row.wins} wins</span>
                 <span className="games">{row.gamesPlayed} games</span>
-                {!row.eligible && <span className="tag">needs {config?.minGames} games</span>}
+                {isEligibleLeaderboardRow(row, minGames) ? (
+                  <span className="tag tag--eligible">Eligible</span>
+                ) : (
+                  <span className="tag">
+                    {row.wins === 0 ? 'Needs a win' : `Needs ${minGames} games`}
+                  </span>
+                )}
               </li>
             ))}
           </ol>
@@ -151,7 +181,11 @@ const WeeklyRewards = () => {
       </section>
 
       <section className="weekly-rewards__mine">
-        <h3>Your rewards</h3>
+        <h3>Completed-week rewards</h3>
+        <p className="weekly-rewards__hint">
+          Rewards are created after a week closes. Requesting starts the admin approval process;
+          withdrawal is available only after on-chain approval.
+        </p>
         {!isConnected ? (
           <p>Connect your wallet to see rewards you've won.</p>
         ) : loading ? (
@@ -164,12 +198,12 @@ const WeeklyRewards = () => {
               const busy = busyWeek === reward.weekKey;
               return (
                 <li key={reward.weekKey} className="reward-row">
-                  <span className="week">{reward.weekKey}</span>
+                  <span className="week">{formatWeekLabel(reward.weekKey)}</span>
                   <span className="amount">
-                    {formatAmount(reward.amount)} {reward.tokenSymbol}
+                    {formatRewardAmount(reward.amount)} {reward.tokenSymbol}
                   </span>
                   <span className={`status status--${reward.status}`}>
-                    {STATUS_LABELS[reward.status] || reward.status}
+                    {getRewardStatusLabel(reward.status)}
                   </span>
                   {reward.status === 'available' && (
                     <button disabled={busy} onClick={() => handleRequest(reward.weekKey)}>

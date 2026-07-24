@@ -164,6 +164,11 @@
   color: #fcd34d;
 }
 
+.tag--eligible {
+  background: #12372e;
+  color: #99f6e4;
+}
+
 .status--available {
   background: #172554;
   color: #bfdbfe;
