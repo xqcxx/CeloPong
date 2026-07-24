@@ -1,7 +1,6 @@
-/* global BigInt */
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAccount, useReadContract } from 'wagmi';
-import { formatUnits, parseUnits } from 'viem';
+import { parseUnits } from 'viem';
 import { PONG_ESCROW_ADDRESS, PONG_ESCROW_ABI } from '../contracts/PongEscrow';
 import { useWalletSession } from '../hooks/useWalletSession';
 import {
@@ -14,16 +13,7 @@ import {
 } from '../hooks/useContract';
 import { isNativeToken } from '../config/currencies';
 import { fetchRewardConfig, fetchPendingRewards, recordRewardApproval, reconcileRewards } from '../api/rewards';
-
-const DECIMALS = 18;
-
-function formatAmount(amountWei) {
-  try {
-    return formatUnits(BigInt(amountWei), DECIMALS);
-  } catch {
-    return '0';
-  }
-}
+import { formatRewardAmount, formatWeekLabel, getRewardStatusLabel } from '../utils/rewards';
 
 const AdminRewards = () => {
   const { address, isConnected } = useAccount();
@@ -91,7 +81,7 @@ const AdminRewards = () => {
     setError(null);
     setNotice(null);
     try {
-      const amountWei = parseUnits(fundAmount, DECIMALS);
+      const amountWei = parseUnits(fundAmount, 18);
       if (!isNativeToken(tokenAddress) && (rewardTokenAllowance ?? 0n) < amountWei) {
         setNotice(`Approving ${fundAmount} ${config.tokenSymbol} for the reward pool...`);
         await approveToken(tokenAddress, PONG_ESCROW_ADDRESS, amountWei);
@@ -114,7 +104,7 @@ const AdminRewards = () => {
     setError(null);
     setNotice(null);
     try {
-      await withdrawRewardPool(tokenAddress, parseUnits(drainAmount, DECIMALS), drainTo);
+      await withdrawRewardPool(tokenAddress, parseUnits(drainAmount, 18), drainTo);
       setNotice(`Sent ${drainAmount} ${config.tokenSymbol} to ${drainTo}.`);
       setDrainAmount('');
       setDrainTo('');
@@ -179,19 +169,28 @@ const AdminRewards = () => {
   return (
     <div className="admin-rewards">
       <h2>Reward Pool Admin</h2>
+      <p className="admin-rewards__hint">
+        Fund the cUSD pool before approving requested weekly rewards. The contract owner approves
+        each winner on-chain; the winner then withdraws from the approved allocation.
+      </p>
+      {config && (
+        <p className="admin-rewards__hint">
+          Current policy: {config.amount} {config.tokenSymbol} per completed week · minimum {config.minGames} games.
+        </p>
+      )}
       {error && <div className="admin-rewards__error">{error}</div>}
       {notice && <div className="admin-rewards__notice">{notice}</div>}
 
       <section className="admin-rewards__pool">
         <h3>Pool balance</h3>
         <p>
-          {config ? `${formatAmount(poolBalance ?? 0n)} ${config.tokenSymbol}` : 'Loading…'}
+          {config ? `${formatRewardAmount(poolBalance ?? 0n)} ${config.tokenSymbol}` : 'Loading…'}
         </p>
         <div className="admin-rewards__fund">
           <input
             type="number"
             min="0"
-            placeholder={`Amount (${config?.tokenSymbol || ''})`}
+            placeholder={`Fund amount (${config?.tokenSymbol || ''})`}
             value={fundAmount}
             onChange={(e) => setFundAmount(e.target.value)}
           />
@@ -203,7 +202,7 @@ const AdminRewards = () => {
           <input
             type="number"
             min="0"
-            placeholder={`Amount (${config?.tokenSymbol || ''})`}
+            placeholder={`Drain amount (${config?.tokenSymbol || ''})`}
             value={drainAmount}
             onChange={(e) => setDrainAmount(e.target.value)}
           />
@@ -236,10 +235,10 @@ const AdminRewards = () => {
           <ul>
             {pending.map((reward) => (
               <li key={reward._id} className="pending-row">
-                <span className="week">{reward.weekKey}</span>
+                <span className="week">{formatWeekLabel(reward.weekKey)}</span>
                 <span className="winner">{reward.playerName || reward.walletAddress}</span>
-                <span className="amount">{formatAmount(reward.amount)} {reward.tokenSymbol}</span>
-                <span className={`status status--${reward.status}`}>{reward.status}</span>
+                <span className="amount">{formatRewardAmount(reward.amount)} {reward.tokenSymbol}</span>
+                <span className={`status status--${reward.status}`}>{getRewardStatusLabel(reward.status)}</span>
                 {reward.status === 'requested' && (
                   <button disabled={busyId === reward._id} onClick={() => handleApprove(reward)}>
                     {busyId === reward._id ? 'Approving…' : 'Approve on-chain'}
