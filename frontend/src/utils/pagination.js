@@ -9,11 +9,11 @@ export function mergePages(existingItems, newItems, key = '_id', options = {}) {
 
   for (const item of newItems) {
     const itemKey = item?.[key];
-    if (itemKey && seen.has(itemKey)) {
+    if (itemKey != null && seen.has(itemKey)) {
       continue;
     }
     merged.push(item);
-    if (itemKey) {
+    if (itemKey != null) {
       seen.add(itemKey);
     } else if (process.env.NODE_ENV !== 'production') {
       console.warn('[pagination] missing key', key, item);
