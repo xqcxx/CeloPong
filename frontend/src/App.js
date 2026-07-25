@@ -39,22 +39,30 @@ function AppContent() {
   };
 
   useEffect(() => {
+    let isActive = true;
+
     if (!isConnected || !address) {
       setUsername(null);
-      return;
+      return () => {
+        isActive = false;
+      };
     }
 
     const normalizedAddress = address.toLowerCase();
     const cachedUsername = localStorage.getItem(`${STORAGE_KEY}:${normalizedAddress}`);
-    setUsername(cachedUsername);
+    if (isActive) {
+      setUsername(cachedUsername);
+    }
 
     fetch(`${BACKEND_URL}/players/wallet/${normalizedAddress}`)
       .then(response => {
+        if (!isActive) return null;
         if (response.status === 404) return null;
         if (!response.ok) throw new Error('Failed to load wallet username');
         return response.json();
       })
       .then(player => {
+        if (!isActive) return;
         if (player?.name) {
           setUsername(player.name);
           localStorage.setItem(`${STORAGE_KEY}:${normalizedAddress}`, player.name);
@@ -64,8 +72,14 @@ function AppContent() {
         }
       })
       .catch(error => {
+        if (!isActive) {
+          return;
+        }
         console.error('Unable to resolve wallet username:', error);
       });
+    return () => {
+      isActive = false;
+    };
   }, [address, isConnected]);
 
   return (
