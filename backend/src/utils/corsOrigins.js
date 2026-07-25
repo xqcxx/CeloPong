@@ -17,7 +17,7 @@ const ORIGIN_SOURCES = {
 };
 
 function normalizeUrl(url) {
-  return url?.replace(/\/$/, '') || null;
+  return url?.replace(/\/+$/, '') || null;
 }
 
 function parseDevOrigins(value) {
