@@ -30,6 +30,8 @@ A modern multiplayer Pong game with real-time gameplay, room-based matchmaking, 
 - Game History “Load More” now truly appends older matches
 - My Wins “Load More” now appends earlier wins instead of replacing the list
 - `/health` now reports the active backend CORS origins/source
+- CORS origin settings now normalize repeated trailing slashes before they reach Socket.IO
+- Frontend backend-URL resolution trims copy-pasted whitespace and trailing slashes
 
 ### My Wins Experience
 - Claim prizes directly via Wagmi hooks and see transaction updates inside a modal overlay.
