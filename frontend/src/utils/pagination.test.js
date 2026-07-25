@@ -20,3 +20,11 @@ test('mergePages appends without duplicating by key', () => {
   );
   expect(merged).toEqual([{ _id: 'a' }, { _id: 'b' }]);
 });
+
+test('mergePages preserves zero-valued keys while de-duplicating them', () => {
+  const merged = mergePages(
+    [{ _id: 0 }],
+    [{ _id: 0 }, { _id: 1 }]
+  );
+  expect(merged).toEqual([{ _id: 0 }, { _id: 1 }]);
+});
